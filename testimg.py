@@ -16,7 +16,7 @@ imgs = [ndimage.gaussian_filter(imageio.imread(path), 2) for path in imgpaths]
 imgseries = np.stack(imgs)
 
 print(imgseries.shape)
-binarized = (imgseries > 1)
+binarized = (imgseries > 2)
 plt.imshow(binarized[0])
 plt.show()
 structure1 = np.ones((3, 13, 13))
@@ -27,5 +27,5 @@ print('closing')
 closed = ndimage.morphology.binary_closing(opened, structure=structure1)
 print('closed')
 for i in range(len(imgseries)):
-    imageio.imwrite('data/stemcells/closed01/'+str(i)+'.png',closed[i]*255)
+    imageio.imwrite('data/stemcells/closed01/'+f'{i:03}'+'.png',closed[i]*255)
     

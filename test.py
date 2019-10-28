@@ -3,6 +3,7 @@ import numpy as np
 import imageio
 import glob
 import torchvision
+from celltrack.cell import Cell, positions, pose_matrices, render_simulation
 from matplotlib import pyplot as plt
 
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
@@ -19,26 +20,6 @@ yyy = yyy.transpose(0, 1)
 
 xy = torch.stack([xxx, yyy], dim=1)
 
-
-class Cell:
-
-    def __init__(self, pose_matrix, position):
-        self.visible = True
-        self.pose_matrix = pose_matrix
-        self.position = position
-
-        self.b = position.expand(1, -1).transpose(0, 1)
-    
-    def render(self, x, stage=1):
-        diff = x-self.b
-        transformed = torch.matmul(self.pose_matrix, diff)
-        transformed_dist = torch.sum(transformed.pow(2), dim=(-2,)).pow(stage)
-
-        return 255*torch.exp(-transformed_dist)
-    
-    def delete(self):
-        self.visible = False
-
 def createCells():
     cells = []
     for i in range(width//5+1, 4*width//5, width//5):
@@ -50,16 +31,8 @@ def createCells():
             cells.append(Cell(M, pos))
     return cells
 
-def render_simulation(cells, target, stage=1):
-    simulated = torch.zeros_like(target)
-    for cell in cells:
-        if(cell.visible):
-            simulated += cell.render(xy, stage)
-
-    return simulated
-
 def loss_fn(cells, target, stage=1):
-    simulated = render_simulation(cells, target, stage)
+    simulated = render_simulation(cells, stage)
     return (target-simulated), simulated
 
 def plot(diff, simulated):
@@ -70,12 +43,6 @@ def plot(diff, simulated):
     plt.imshow(simulated.cpu().detach().numpy())
     
     plt.show()
-
-def positions(cells):
-    return [cell.position for cell in cells if cell.visible]
-
-def pose_matrices(cells):
-    return [cell.pose_matrix for cell in cells if cell.visible]
 
 def optimize_position(iterations, target, stage=2):
     print('optimizing position')
@@ -132,6 +99,7 @@ def delete_superfluous(threshold, target):
             cell.delete()
 
 i = 0
+print("go")
 for path in sorted(glob.glob('data/stemcells/closed01/*.png')):
     print(path)
     target = torch.from_numpy(imageio.imread(path)).float().to(device)
@@ -157,11 +125,11 @@ for path in sorted(glob.glob('data/stemcells/closed01/*.png')):
         pos_array = torch.stack(positions(cells))
         pose_array = torch.stack(pose_matrices(cells))
 
-        torch.save(pos_array, 'data/stemcells/simulated/'+str(i)+'pos.pt')
-        torch.save(pose_array, 'data/stemcells/simulated/'+str(i)+'pose.pt')
+        torch.save(pos_array, 'data/stemcells/simulated/'+f'{i:03}'+'pos.pt')
+        torch.save(pose_array, 'data/stemcells/simulated/'+f'{i:03}'+'pose.pt')
 
-        simulated = render_simulation(cells, target, stage=2)
-        torch.save(simulated, 'data/stemcells/simulated/'+str(i)+'simulatedimg.pt')
+        simulated = render_simulation(cells, stage=2)
+        torch.save(simulated, 'data/stemcells/simulated/'+f'{i:03}'+'simulatedimg.pt')
 
         del simulated
         del pose_array
