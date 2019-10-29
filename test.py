@@ -1,24 +1,14 @@
 import torch
 import numpy as np
+import sys
 import imageio
 import glob
 import torchvision
 from celltrack.cell import Cell, positions, pose_matrices, render_simulation
 from matplotlib import pyplot as plt
+from setup import device, xy, width, height
 
-device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 print(device)
-
-width = 1024
-height = 1024
-
-xx = torch.arange(0, width, 1, device=device, dtype=torch.float32)
-yy = torch.arange(0, height, 1, device=device, dtype=torch.float32)
-xxx = xx.expand((height, -1))
-yyy = yy.expand((width, -1))
-yyy = yyy.transpose(0, 1)
-
-xy = torch.stack([xxx, yyy], dim=1)
 
 def createCells():
     cells = []
