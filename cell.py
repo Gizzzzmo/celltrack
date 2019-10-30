@@ -40,7 +40,7 @@ def pose_matrices(cells):
     return [cell.pose_matrix for cell in cells if cell.visible]
 
 def render_simulation(cells, stage=1):
-    simulated = torch.zeros_like(xy.sum(dim=1))
+    simulated = torch.zeros((width, height), device=device)
     for cell in cells:
         if(cell.visible):
             simulated += cell.render(xy, stage)
