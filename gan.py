@@ -14,8 +14,8 @@ import numpy as numpy
 import matplotlib.pyplot as plt
 import matplotlib.animation as animation
 from IPython.display import HTML
-import celltrack.load as load
-from celltrack.setup import device, width, height
+import load as load
+from setup import device, width, height
 
 
 width //= 2

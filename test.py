@@ -4,7 +4,8 @@ import sys
 import imageio
 import glob
 import torchvision
-from celltrack.cell import Cell, positions, pose_matrices, render_simulation
+import skimage
+from cell import Cell, positions, pose_matrices, render_simulation
 from matplotlib import pyplot as plt
 from setup import device, xy, width, height
 
@@ -12,10 +13,11 @@ print(device)
 
 def createCells():
     cells = []
-    for i in range(width//5+1, 4*width//5, width//5):
-        for j in range(height//5+1, 4*height//5, width//5):
+    for i in range(width//5, 4*width//5, width//5):
+        for j in range(height//5, 4*height//5, width//5):
+            print(i, j)
             pos = torch.cuda.FloatTensor([i, j])
-            M = torch.cuda.FloatTensor([[1.5385e-02, 6.2500e-06], [6.2500e-06, 1.5385e-02]])
+            M = torch.cuda.FloatTensor([[3.6e-02, 1.3e-05], [1.3e-05, 3.6e-02]])
             M.requires_grad=True
             pos.requires_grad=True
             cells.append(Cell(M, pos))
@@ -41,7 +43,7 @@ def optimize_position(iterations, target, stage=2):
         diff, simulated = loss_fn(cells, target, stage)
         loss = diff.pow(2).sum()
         if(i%100 == 99):
-            print(cells[0].pose_matrix)
+            print('plotting...')
             #plot(diff, simulated)
         loss.backward(retain_graph=True)
         optimizer1.step()
@@ -53,7 +55,7 @@ def optimize_pose(iterations, target, stage=2):
         diff, simulated = loss_fn(cells, target, stage)
         loss = diff.pow(2).sum()
         if(i%100 == 99):
-            print(cells[0].pose_matrix)
+            print('plotting...')
             #plot(diff, simulated)
         loss.backward(retain_graph=True)
         optimizer2.step()
@@ -65,8 +67,8 @@ def split(threshold):
         ecc = 1-(s[1]/s[0])**2
         if(ecc > threshold**2 and cell.visible):
             cell.delete()
-            M1 = torch.cuda.FloatTensor([[1/32, 0], [0, 1/32]])
-            M2 = torch.cuda.FloatTensor([[1/32, 0], [0, 1/32]])
+            M1 = torch.cuda.FloatTensor([[1/16, 0], [0, 1/16]])
+            M2 = torch.cuda.FloatTensor([[1/16, 0], [0, 1/16]])
             pos = cell.position
             pos.requires_grad = False
             offset = torch.cuda.FloatTensor([-u[0, 1], u[0, 0]])/s[0]
@@ -92,15 +94,24 @@ i = 0
 print("go")
 for path in sorted(glob.glob('data/stemcells/closed01/*.png')):
     print(path)
-    target = torch.from_numpy(imageio.imread(path)).float().to(device)
-
+    raw_image = imageio.imread(path)
+    
+    target = 255*torch.from_numpy(skimage.transform.rescale(raw_image,
+        (width/raw_image.shape[0], height/raw_image.shape[1]))).float().to(device)
     cells = createCells()
+    
+    diff, simulated = loss_fn(cells, target)
     optimizer1 = torch.optim.Adam(positions(cells), lr=5)
     optimizer2 = torch.optim.Adam(positions(cells) + pose_matrices(cells), lr=2e-5)
     optimize_position(200, target, 1)
     optimize_pose(200, target)
     delete_superfluous(1.05, target)
     if(positions(cells)):
+        split(0.65)
+        optimizer2 = torch.optim.Adam(positions(cells) + pose_matrices(cells), lr=2e-5)
+        optimizer1 = torch.optim.Adam(positions(cells), lr=5)
+        optimize_position(100, target)
+        optimize_pose(200, target)
         split(0.65)
         optimizer2 = torch.optim.Adam(positions(cells) + pose_matrices(cells), lr=2e-5)
         optimizer1 = torch.optim.Adam(positions(cells), lr=5)

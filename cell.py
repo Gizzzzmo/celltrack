@@ -1,5 +1,5 @@
 import torch
-from celltrack.setup import xy, width, height, device
+from setup import xy, width, height, device
 class Cell:
 
     def __init__(self, pose_matrix, position):

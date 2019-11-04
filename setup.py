@@ -2,8 +2,8 @@ import torch
 
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
-width = 1024
-height = 1024
+width = 512
+height = 512
 
 xx = torch.arange(0, width, 1, device=device, dtype=torch.float32)
 yy = torch.arange(0, height, 1, device=device, dtype=torch.float32)
