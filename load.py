@@ -1,9 +1,9 @@
 import torch
 import glob
 from functools import reduce
-from celltrack.cell import Cell, pose_matrices, positions
+from cell import Cell, pose_matrices, positions
 import matplotlib.pyplot as plt
-from celltrack.setup import device
+from setup import device
 
 def tensor_to_list(tensor):
     l = []
@@ -15,8 +15,8 @@ def simulated_ellipses():
     positions = [[]]
     pose_matrices = [[]]
 
-    positions += sorted(glob.glob('data/stemcells/simulated/???pos.pt'))
-    pose_matrices += sorted(glob.glob('data/stemcells/simulated/???pose.pt'))
+    positions += sorted(glob.glob('../data/stemcells/simulated/???pos.pt'))
+    pose_matrices += sorted(glob.glob('../data/stemcells/simulated/???pose.pt'))
 
     positions = reduce(lambda a, b: a + [tensor_to_list(torch.load(b, map_location=device))], positions)
     pose_matrices = reduce(lambda a, b: a + [tensor_to_list(torch.load(b, map_location=device))], pose_matrices)

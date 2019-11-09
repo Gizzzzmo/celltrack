@@ -16,8 +16,8 @@ def createCells():
     for i in range(width//5, 4*width//5, width//5):
         for j in range(height//5, 4*height//5, width//5):
             print(i, j)
-            pos = torch.cuda.FloatTensor([i, j])
-            M = torch.cuda.FloatTensor([[3.6e-02, 1.3e-05], [1.3e-05, 3.6e-02]])
+            pos = torch.FloatTensor([i, j])
+            M = torch.FloatTensor([[3.6e-02, 1.3e-05], [1.3e-05, 3.6e-02]])
             M.requires_grad=True
             pos.requires_grad=True
             cells.append(Cell(M, pos))
@@ -42,9 +42,9 @@ def optimize_position(iterations, target, stage=2):
         optimizer1.zero_grad()
         diff, simulated = loss_fn(cells, target, stage)
         loss = diff.pow(2).sum()
-        if(i%100 == 99):
+        if(i%4 == 1):
             print('plotting...')
-            #plot(diff, simulated)
+            plot(diff, simulated)
         loss.backward(retain_graph=True)
         optimizer1.step()
 
@@ -54,9 +54,9 @@ def optimize_pose(iterations, target, stage=2):
         optimizer2.zero_grad()
         diff, simulated = loss_fn(cells, target, stage)
         loss = diff.pow(2).sum()
-        if(i%100 == 99):
+        if(i%4 == 1):
             print('plotting...')
-            #plot(diff, simulated)
+            plot(diff, simulated)
         loss.backward(retain_graph=True)
         optimizer2.step()
 
@@ -67,11 +67,11 @@ def split(threshold):
         ecc = 1-(s[1]/s[0])**2
         if(ecc > threshold**2 and cell.visible):
             cell.delete()
-            M1 = torch.cuda.FloatTensor([[1/16, 0], [0, 1/16]])
-            M2 = torch.cuda.FloatTensor([[1/16, 0], [0, 1/16]])
+            M1 = torch.FloatTensor([[1/16, 0], [0, 1/16]])
+            M2 = torch.FloatTensor([[1/16, 0], [0, 1/16]])
             pos = cell.position
             pos.requires_grad = False
-            offset = torch.cuda.FloatTensor([-u[0, 1], u[0, 0]])/s[0]
+            offset = torch.FloatTensor([-u[0, 1], u[0, 0]])/s[0]
             pos1 = (pos+offset).detach()
             pos2 = (pos-offset).detach()
             M1.requires_grad = True
@@ -92,8 +92,11 @@ def delete_superfluous(threshold, target):
 
 i = 0
 print("go")
-for path in sorted(glob.glob('data/stemcells/closed01/*.png')):
+for path in sorted(glob.glob('../data/stemcells/closed01/*.png')):
     print(path)
+    if(i == 0):
+        i += 1
+        continue
     raw_image = imageio.imread(path)
     
     target = 255*torch.from_numpy(skimage.transform.rescale(raw_image,
@@ -126,11 +129,11 @@ for path in sorted(glob.glob('data/stemcells/closed01/*.png')):
         pos_array = torch.stack(positions(cells))
         pose_array = torch.stack(pose_matrices(cells))
 
-        torch.save(pos_array, 'data/stemcells/simulated/'+f'{i:03}'+'pos.pt')
-        torch.save(pose_array, 'data/stemcells/simulated/'+f'{i:03}'+'pose.pt')
+        #torch.save(pos_array, 'data/stemcells/simulated/'+f'{i:03}'+'pos.pt')
+        #torch.save(pose_array, 'data/stemcells/simulated/'+f'{i:03}'+'pose.pt')
 
         simulated = render_simulation(cells, stage=2)
-        torch.save(simulated, 'data/stemcells/simulated/'+f'{i:03}'+'simulatedimg.pt')
+        #torch.save(simulated, 'data/stemcells/simulated/'+f'{i:03}'+'simulatedimg.pt')
 
         del simulated
         del pose_array
@@ -138,5 +141,5 @@ for path in sorted(glob.glob('data/stemcells/closed01/*.png')):
 
     del cells
     del target
-    torch.cuda.empty_cache()
+    torch.empty_cache()
     i += 1
