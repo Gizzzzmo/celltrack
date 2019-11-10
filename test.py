@@ -5,7 +5,7 @@ import imageio
 import glob
 import torchvision
 import skimage
-from cell import Cell, positions, pose_matrices, render_simulation
+from cell import Cell, positions, pose_matrices, render_simulation, redner_simulation
 from matplotlib import pyplot as plt
 from setup import device, xy, width, height
 
@@ -16,8 +16,8 @@ def createCells():
     for i in range(width//5, 4*width//5, width//5):
         for j in range(height//5, 4*height//5, width//5):
             print(i, j)
-            pos = torch.FloatTensor([i, j])
-            M = torch.FloatTensor([[3.6e-02, 1.3e-05], [1.3e-05, 3.6e-02]])
+            pos = torch.FloatTensor([i, j]).to(device)
+            M = torch.FloatTensor([[3.6e-02, 1.3e-05], [1.3e-05, 3.6e-02]]).to(device)
             M.requires_grad=True
             pos.requires_grad=True
             cells.append(Cell(M, pos))
@@ -42,7 +42,7 @@ def optimize_position(iterations, target, stage=2):
         optimizer1.zero_grad()
         diff, simulated = loss_fn(cells, target, stage)
         loss = diff.pow(2).sum()
-        if(i%4 == 1):
+        if(i%100 == 99):
             print('plotting...')
             plot(diff, simulated)
         loss.backward(retain_graph=True)
@@ -54,7 +54,7 @@ def optimize_pose(iterations, target, stage=2):
         optimizer2.zero_grad()
         diff, simulated = loss_fn(cells, target, stage)
         loss = diff.pow(2).sum()
-        if(i%4 == 1):
+        if(i%100 == 99):
             print('plotting...')
             plot(diff, simulated)
         loss.backward(retain_graph=True)
@@ -67,11 +67,11 @@ def split(threshold):
         ecc = 1-(s[1]/s[0])**2
         if(ecc > threshold**2 and cell.visible):
             cell.delete()
-            M1 = torch.FloatTensor([[1/16, 0], [0, 1/16]])
-            M2 = torch.FloatTensor([[1/16, 0], [0, 1/16]])
+            M1 = torch.FloatTensor([[1/16, 0], [0, 1/16]]).to(device)
+            M2 = torch.FloatTensor([[1/16, 0], [0, 1/16]]).to(device)
             pos = cell.position
             pos.requires_grad = False
-            offset = torch.FloatTensor([-u[0, 1], u[0, 0]])/s[0]
+            offset = torch.FloatTensor([-u[0, 1], u[0, 0]]).to(device)/s[0]
             pos1 = (pos+offset).detach()
             pos2 = (pos-offset).detach()
             M1.requires_grad = True
@@ -89,6 +89,14 @@ def delete_superfluous(threshold, target):
         norm = target.pow(2).sum()
         if(loss > norm*threshold or simulated.sum() < 1e-1):
             cell.delete()
+
+def create_polygons(cells, threshold):
+    print('creating vertex lists for polygons...')
+    for cell in cells:
+        if cell.visible:
+            cell.create_polygon(threshold)
+        del cell.pose_matrix
+    torch.cuda.empty_cache()
 
 i = 0
 print("go")
@@ -126,13 +134,18 @@ for path in sorted(glob.glob('../data/stemcells/closed01/*.png')):
         optimize_position(100, target)
         optimize_pose(200, target)
         delete_superfluous(1, target)
+
         pos_array = torch.stack(positions(cells))
         pose_array = torch.stack(pose_matrices(cells))
+        create_polygons(cells, 50)
+        imgg = redner_simulation(cells)
+
+        plot(imgg, imgg)
 
         #torch.save(pos_array, 'data/stemcells/simulated/'+f'{i:03}'+'pos.pt')
         #torch.save(pose_array, 'data/stemcells/simulated/'+f'{i:03}'+'pose.pt')
 
-        simulated = render_simulation(cells, stage=2)
+        #simulated = render_simulation(cells, stage=2)
         #torch.save(simulated, 'data/stemcells/simulated/'+f'{i:03}'+'simulatedimg.pt')
 
         del simulated
@@ -141,5 +154,5 @@ for path in sorted(glob.glob('../data/stemcells/closed01/*.png')):
 
     del cells
     del target
-    torch.empty_cache()
+    torch.cuda.empty_cache()
     i += 1

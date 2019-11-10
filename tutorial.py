@@ -1,5 +1,6 @@
 import pyredner
 import torch
+import matplotlib.pyplot as plt
 
 pyredner.set_use_gpu(torch.cuda.is_available())
 
@@ -84,6 +85,9 @@ for t in range(200):
     # Important to use a different seed every iteration, otherwise the result
     # would be biased.
     img = render(t+1, *scene_args)
+    if(t%10 == 0):
+        plt.imshow(img.cpu().detach().numpy())
+        plt.show()
     # Compute the loss function. Here it is L2.
     loss = (img - target).pow(2).sum()
 
