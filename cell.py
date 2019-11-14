@@ -34,7 +34,9 @@ class Cell:
         z = depth + torch.zeros(granularity, device=device, dtype=torch.float32)
         self.vertices = torch.cat([self.position - offset.transpose(0, 1), torch.stack([z], dim=1)], dim=1).detach()
         self.vertices.requires_grad = True
-
+    
+    def create_shape(self, threshold):
+        self.create_polygon(threshold)
         self.shape = pyredner.Shape(\
             vertices = self.vertices,
             indices = cell_indices,
@@ -59,6 +61,12 @@ def render_simulation(cells, stage=1):
         if(cell.visible):
             simulated += cell.render(xy, stage)
 
+    return simulated
+
+def render_vertex_list(cells, simulated=torch.zeros((width, height), device=device)):
+    for cell in cells:
+        for i in range(len(cell.vertices)):
+            simulated[int(cell.vertices[i, 1]), int(cell.vertices[i, 0])] = 255
     return simulated
 
 def redner_simulation(cells):

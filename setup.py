@@ -3,8 +3,8 @@ import torch
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
 # width and height of the images, will be scaled automatically
-width = 512
-height = 512
+width = 512*2
+height = 512*2
 
 # the z coordinate of the plane in which the simulated cells will be placed with pyredner
 depth = 507
@@ -12,6 +12,8 @@ depth = 507
 # the number of vertices used to simuale one cell
 granularity = 100
 
+pyredner = None
+cell_indices, cam, materials, area_lights, shape_light = None, None, None, None, None
 try:
     import pyredner
 

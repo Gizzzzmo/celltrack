@@ -147,7 +147,7 @@ iters = 0
 
 print("Starting Training Loop...")
 # For each epoch
-'''for epoch in range(num_epochs):
+for epoch in range(num_epochs):
     # For each batch in the dataloader
     for i, data in enumerate(dataloader, 0):
 
@@ -194,6 +194,7 @@ print("Starting Training Loop...")
         # Since we just updated D, perform another forward pass of all-fake batch through D
         output = netD(fake).view(-1)
         # Calculate G's loss based on this output
+        errRec = output - 
         errG = criterion(output, label)
         # Calculate gradients for G
         errG.backward()
@@ -226,4 +227,4 @@ plt.plot(D_losses,label="D")
 plt.xlabel("iterations")
 plt.ylabel("Loss")
 plt.legend()
-plt.show()'''
+plt.show()
