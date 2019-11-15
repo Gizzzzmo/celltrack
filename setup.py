@@ -49,7 +49,7 @@ try:
 except:
     print('pyredner not initialized')
 
-# creating a coordinate grid to apply functions to 
+# creating a coordinate grid to apply functions to
 xx = torch.arange(0, width, 1, device=device, dtype=torch.float32)
 yy = torch.arange(0, height, 1, device=device, dtype=torch.float32)
 xxx = xx.expand((height, -1))

@@ -55,18 +55,17 @@ def pose_matrices(cells):
 def redner_shapes(cells):
     return [cell.shape for cell in cells if cell.visible]
 
-def render_simulation(cells, stage=1):
-    simulated = torch.zeros((width, height), device=device)
+def render_simulation(cells, stage=1, simulated=torch.zeros((width, height), device=device)):
     for cell in cells:
         if(cell.visible):
             simulated += cell.render(xy, stage)
 
     return simulated
 
-def render_vertex_list(cells, simulated=torch.zeros((width, height), device=device)):
+def render_vertex_list(cells, value=255, simulated=torch.zeros((width, height), device=device)):
     for cell in cells:
         for i in range(len(cell.vertices)):
-            simulated[int(cell.vertices[i, 1]), int(cell.vertices[i, 0])] = 255
+            simulated[int(cell.vertices[i, 1]), int(cell.vertices[i, 0])] = value
     return simulated
 
 def redner_simulation(cells):
