@@ -64,8 +64,9 @@ def render_simulation(cells, stage=1, simulated=torch.zeros((width, height), dev
 
 def render_vertex_list(cells, value=255, simulated=torch.zeros((width, height), device=device)):
     for cell in cells:
-        for i in range(len(cell.vertices)):
-            simulated[int(cell.vertices[i, 1]), int(cell.vertices[i, 0])] = value
+        if(cell.visible):
+            for i in range(len(cell.vertices)):
+                simulated[int(cell.vertices[i, 1]), int(cell.vertices[i, 0])] = value
     return simulated
 
 def redner_simulation(cells):

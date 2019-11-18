@@ -60,6 +60,16 @@ def optimize_pose(iterations, target, stage=2):
         loss.backward(retain_graph=True)
         optimizer2.step()
 
+def optimize_vertices(iterations, target, optimizer):
+    print('optimizing vertices for rendering...')
+    for i in range(iterations):
+        optimizer.zero_grad()
+        img = redner_simulation(cells)
+        loss = (target-img).pow(2).sum()
+        loss.backward(retain_graph=True)
+        optimizer.step()
+
+
 def split(threshold):
     print('splitting...')
     for cell in cells:
