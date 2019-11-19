@@ -12,6 +12,14 @@ class Cell:
 
         self.b = position.expand(1, -1).transpose(0, 1)
     
+    def __init__(self, vertices):
+        self.visible = True
+        self.vertices = vertices
+        self.shape = None
+        self.position = None
+        self.pose_matrix = None
+
+
     def render(self, x, stage=1):
         diff = x-self.b
         transformed = torch.matmul(self.pose_matrix, diff)
@@ -35,8 +43,10 @@ class Cell:
         self.vertices = torch.cat([self.position - offset.transpose(0, 1), torch.stack([z], dim=1)], dim=1).detach()
         self.vertices.requires_grad = True
     
-    def create_shape(self, threshold):
-        self.create_polygon(threshold)
+    def create_shape(self, threshold, newpolygon=False):
+        if (self.vertices == None) or newpolygon: 
+            self.create_polygon(threshold)
+        
         self.shape = pyredner.Shape(\
             vertices = self.vertices,
             indices = cell_indices,
