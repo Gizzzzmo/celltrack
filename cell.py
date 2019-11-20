@@ -11,13 +11,13 @@ class Cell:
         self.shape = None
 
         self.b = position.expand(1, -1).transpose(0, 1)
-    
-    def __init__(self, vertices):
+    @classmethod
+    def from_vertices(cls, vertices):
+        cell = Cell(None, None)
+
         self.visible = True
-        self.vertices = vertices
-        self.shape = None
-        self.position = None
-        self.pose_matrix = None
+        cell.vertices = vertices
+        return cell
 
 
     def render(self, x, stage=1):

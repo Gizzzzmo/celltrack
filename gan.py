@@ -24,7 +24,8 @@ print("Seed: ", manualSeed)
 random.seed(manualSeed)
 torch.manual_seed(manualSeed)
 
-load.TransformingLoader(pathtocelldata, pathtoimages, batch_size, width, height)
+pathtocelldata = ""
+pathtoimages = ""
 
 workers = 2
 
@@ -160,7 +161,7 @@ for epoch in range(num_batches):
     ## Train with all-real batch
     netD.zero_grad()
     # Format batch
-    real_cpu = inputs[0].to(device)
+    real_cpu = inputs.to(device)
     b_size = real_cpu.size(0)
     label = torch.full((b_size,), real_label, device=device)
     # Forward pass real batch through D
@@ -197,7 +198,6 @@ for epoch in range(num_batches):
     # Since we just updated D, perform another forward pass of all-fake batch through D
     output = netD(fake).view(-1)
     # Calculate G's loss based on this output
-    errRec = output - 
     errG = criterion(output, label)
     # Calculate gradients for G
     errG.backward()
@@ -206,9 +206,9 @@ for epoch in range(num_batches):
     optimizerG.step()
 
     # Output training stats
-    if i % 50 == 0:
-        print('[%d/%d][%d/%d]\tLoss_D: %.4f\tLoss_G: %.4f\tD(x): %.4f\tD(G(z)): %.4f / %.4f'
-                % (epoch, num_epochs, i, len(dataloader),
+    if iters % 50 == 0:
+        print('[%d/%d]\tLoss_D: %.4f\tLoss_G: %.4f\tD(x): %.4f\tD(G(z)): %.4f / %.4f'
+                % (iters, num_batches,
                     errD.item(), errG.item(), D_x, D_G_z1, D_G_z2))
 
     # Save Losses for plotting later
@@ -216,7 +216,7 @@ for epoch in range(num_batches):
     D_losses.append(errD.item())
 
     # Check how the generator is doing by saving G's output on fixed_noise
-    if (iters % 500 == 0) or ((epoch == num_epochs-1) and (i == len(dataloader)-1)):
+    if (iters % 500 == 0) or (iters == num_batches-1):
         with torch.no_grad():
             fake = netG(fixed_noise).detach().cpu()
         img_list.append(vutils.make_grid(fake, padding=2, normalize=True))

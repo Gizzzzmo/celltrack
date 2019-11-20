@@ -30,10 +30,10 @@ def simulated_ellipses():
 def simulated_cell_vertices(path):
     vertices = [[]]
 
-    vertices += sorted(glong.globg(path))
+    vertices += sorted(glob.glob(path))
     vertices = reduce(lambda a, b: a + [tensor_to_list(torch.load(b, map_location=device))], vertices)
 
-    return reduce(lambda a, b: a + [reduce(lambda c, d: c + [Cell(d)], [[]] + b)], [[]] + vertices)
+    return reduce(lambda a, b: a + [reduce(lambda c, d: c + [Cell.from_vertices(d)], [[]] + b)], [[]] + vertices)
 
 class TransformingLoader:
 
@@ -44,7 +44,7 @@ class TransformingLoader:
         self.imgpaths = sorted(glob.glob(pathtoimages))
         assert(len(self.imgpaths) == len(self.celldatapaths))
         self.batch_size = batch_size
-        self.transform = lambda img, target: img, target
+        self.transform = lambda img, target: (img, target)
 
     def add_transform(self, transform, option_count):
         prev_transform = self.transform
@@ -54,7 +54,7 @@ class TransformingLoader:
             return transform(*prev_transform(img, target), r)
         self.transform = rand_transform
 
-    def get_batch(self):
+    def next_batch(self):
         inputbatch = []
         targetbatch = []
         for i in range(self.batch_size):
