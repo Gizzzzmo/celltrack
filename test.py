@@ -94,7 +94,7 @@ def create_polygons(cells, threshold):
     print('creating vertex lists for polygons...')
     for cell in cells:
         if cell.visible:
-            cell.create_polygon(threshold)
+            cell.create_shape(threshold)
         del cell.pose_matrix
     torch.cuda.empty_cache()
 

@@ -69,12 +69,24 @@ def render_vertex_list(cells, value=255, simulated=torch.zeros((width, height), 
     return simulated
 
 def redner_simulation(cells):
-    shapes = [shape_light] + redner_shapes(cells)
+    print('??')
+    shape_triangle = pyredner.Shape(\
+        vertices = torch.tensor([[-200.0, 150.0, 507], [100.0, 100.0, 507], [-100.5, -150.0, 507]],
+            device = pyredner.get_device()),
+        indices = torch.tensor([[0, 1, 2]], dtype = torch.int32,
+            device = pyredner.get_device()),
+        uvs = None,
+        normals = None,
+        material_id = 0)
+    print('???')
+    shapes = [shape_light, shape_triangle] + redner_shapes(cells)
+    print('????')
     scene = pyredner.Scene(cam, shapes, materials, area_lights)
-
+    print('??????')
     scene_args = pyredner.RenderFunction.serialize_scene(\
     scene = scene,
     num_samples = 16,
     max_bounces = 1)
-
-    return pyredner.RenderFunction.apply(0, *scene_args)
+    print('??????????')
+    render_fn = pyredner.RenderFunction.apply
+    return render_fn(0, *scene_args)

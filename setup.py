@@ -46,6 +46,22 @@ try:
 
     cell_indices = torch.tensor([[0, i+1, i+2] for i in range(granularity-2)], dtype = torch.int32,
                 device = pyredner.get_device())
+    shape_triangle = pyredner.Shape(\
+        vertices = torch.tensor([[-200.0, 150.0, 507], [100.0, 100.0, 507], [-100.5, -150.0, 507]],
+            device = pyredner.get_device()),
+        indices = torch.tensor([[0, 1, 2]], dtype = torch.int32,
+            device = pyredner.get_device()),
+        uvs = None,
+        normals = None,
+        material_id = 0)
+    shapes = [shape_light, shape_triangle]
+    scene = pyredner.Scene(cam, shapes, materials, area_lights)
+    scene_args = pyredner.RenderFunction.serialize_scene(\
+        scene = scene,
+        num_samples = 16,
+        max_bounces = 1)
+    render_fn = pyredner.RenderFunction.apply
+    img = render_fn(0, *scene_args)
 except:
     print('pyredner not initialized')
 
