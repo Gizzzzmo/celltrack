@@ -1,6 +1,7 @@
 import torch
 import math
 from setup import xy, width, height, device, depth, granularity, pyredner, cell_indices, cam, materials, area_lights, shape_light
+
 class Cell:
 
     def __init__(self, pose_matrix, position):
@@ -31,7 +32,7 @@ class Cell:
         r = torch.stack([torch.cos(phi), torch.sin(phi)])
         # multiplying the pose_matrix with r yields the set of distorted vectors
         offset = (math.pow(-math.log(threshold/255), .25) / torch.matmul(self.pose_matrix, r).pow(2).sum(dim=0).pow(.5)) * r
-        z = depth + torch.zeros(granularity, device=device, dtype=torch.float32)
+        z = torch.zeros(granularity, device=device, dtype=torch.float32)
         self.vertices = torch.cat([self.position - offset.transpose(0, 1), torch.stack([z], dim=1)], dim=1).detach()
         self.vertices.requires_grad = True
     
@@ -70,24 +71,15 @@ def render_vertex_list(cells, value=255, simulated=torch.zeros((width, height), 
     return simulated
 
 def redner_simulation(cells):
-    print('??')
-    shape_triangle = pyredner.Shape(\
-        vertices = torch.tensor([[-200.0, 150.0, 507], [100.0, 100.0, 507], [-100.5, -150.0, 507]],
-            device = pyredner.get_device()),
-        indices = torch.tensor([[0, 1, 2]], dtype = torch.int32,
-            device = pyredner.get_device()),
-        uvs = None,
-        normals = None,
-        material_id = 0)
-    print('???')
-    shapes = [shape_light, shape_triangle] + redner_shapes(cells)
-    print('????')
+    shapes = [shape_light] + redner_shapes(cells)
+    
     scene = pyredner.Scene(cam, shapes, materials, area_lights)
-    print('??????')
+
     scene_args = pyredner.RenderFunction.serialize_scene(\
-    scene = scene,
-    num_samples = 16,
-    max_bounces = 1)
-    print('??????????')
-    render_fn = pyredner.RenderFunction.apply
-    return render_fn(0, *scene_args)
+        scene = scene,
+        num_samples = 16,
+        max_bounces = 1)
+
+    render = pyredner.RenderFunction.apply
+
+    return render(0, *scene_args)

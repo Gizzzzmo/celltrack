@@ -1,45 +1,56 @@
 import pyredner
 import torch
 import numpy as np
+import cell
+import math
+from setup import cell_indices
+import load
 import matplotlib.pyplot as plt
+
+cells = load.simulated_ellipses()[0]
+for c in cells:
+    c.create_shape(112)
 
 pyredner.set_use_gpu(torch.cuda.is_available())
 width, height = 512, 512
-factor = 2**3
-cam = pyredner.Camera(position=torch.tensor([0.0, 0.0, -5.0]),
-                            look_at=torch.tensor([0.0, 0.0, 0.0]),
-                            up=torch.tensor([0.0, 1.0, 0.0]),
-                            fov=torch.tensor([45.0]),
+factor = 2**2
+distance_in_widths = 10.0
+
+cam = pyredner.Camera(position=torch.tensor([width/2, height/2, -distance_in_widths * width]),
+                            look_at=torch.tensor([width/2, height/2, 0.0]),
+                            up=torch.tensor([0.0, -1.0, 0.0]),
+                            fov=torch.tensor([180 * math.atan(1/distance_in_widths) / math.pi]),
                             clip_near=1e-2,
                             resolution=(width, height),
                             fisheye=False)
 
-mat_grey = pyredner.Material(diffuse_reflectance=torch.tensor([0.5, 0.5, 0.5], device=pyredner.get_device()))
+mat_grey = pyredner.Material(diffuse_reflectance=2*torch.tensor([0.5, 0.5, 0.5], device=pyredner.get_device()))
 materials = [mat_grey]
 
 shape_triangle = pyredner.Shape(\
-    vertices = torch.tensor([[-200.0, 150.0, 507], [100.0, 100.0, 507], [-100.5, -150.0, 507]],
+    vertices = torch.tensor([[ 80.0,  50.0,  0],
+        [108.0,  35.0,   0],
+        [108.0, 66.0,   0]],
         device = pyredner.get_device()),
-    indices = torch.tensor([[0, 1, 2]], dtype = torch.int32,
-        device = pyredner.get_device()),
+    indices = cell_indices,
     uvs = None,
     normals = None,
     material_id = 0)
 shape_light = pyredner.Shape(\
-    vertices = torch.tensor([[-width/factor, -height/factor, -7.0],
-                            [ width/factor, -height/factor, -7.0],
-                            [-width/factor,  height/factor, -7.0],
-                            [ width/factor,  height/factor, -7.0]], device = pyredner.get_device()),
+    vertices = torch.tensor([[-width + width/2, -height + height/2, -distance_in_widths * width - 5],
+                            [ width + width/2, -height + height/2, -distance_in_widths * width - 5],
+                            [-width + width/2,  height + height/2, -distance_in_widths * width - 5],
+                            [ width + width/2,  height + height/2, -distance_in_widths * width - 5]], device = pyredner.get_device()),
     indices = torch.tensor([[0, 1, 2],[1, 3, 2]],
         dtype = torch.int32, device = pyredner.get_device()),
     uvs = None,
     normals = None,
     material_id = 0)
 
-shapes = [shape_triangle, shape_light]
+shapes = [shape_light] + cell.redner_shapes(cells)
 
-light = pyredner.AreaLight(shape_id = 1, 
-                           intensity = torch.tensor([20.0,20.0,20.0]))
+light = pyredner.AreaLight(shape_id = 0, 
+                           intensity = torch.tensor([100.0,100.0,100.0])/factor)
 area_lights = [light]
 
 scene = pyredner.Scene(cam, shapes, materials, area_lights)
@@ -49,8 +60,6 @@ scene_args = pyredner.RenderFunction.serialize_scene(\
     num_samples = 16,
     max_bounces = 1)
 
-plt.plot(np.arange(1, 9))
-plt.show()
 render = pyredner.RenderFunction.apply
 
 img = render(0, *scene_args) 
@@ -80,7 +89,7 @@ pyredner.imwrite(img.cpu(), 'results/optimize_single_triangle/init.png')
 
 optimizer = torch.optim.Adam([shape_triangle.vertices], lr=5e-2)
 
-for t in range(80):
+for t in range(10):
     print('iteration:', t)
     optimizer.zero_grad()
     # Forward pass: render the image

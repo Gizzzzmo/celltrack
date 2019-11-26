@@ -4,7 +4,8 @@ import cell
 import imageio
 import torch
 import glob
-from cell import render_vertex_list, render_simulation
+from setup import pyredner
+from cell import render_vertex_list, render_simulation, redner_simulation
 
 a = load.simulated_ellipses()
 cells = a[49]
@@ -31,4 +32,11 @@ def show(i):
     plt.imshow(sim.detach())
     plt.figure(2)
     plt.imshow(sim0.detach())
+
+    if(pyredner is not None):
+        for c in a[i]:
+            c.create_shape(154)
+        sim1 = redner_simulation(a[i])
+        plt.figure(3)
+        plt.imshow(sim1.detach())
     plt.show()
