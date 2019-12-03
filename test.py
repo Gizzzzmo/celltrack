@@ -5,19 +5,20 @@ import imageio
 import glob
 import torchvision
 import skimage
-from cell import Cell, positions, pose_matrices, render_simulation, redner_simulation
+from cell import Cell, positions, pose_matrices, render_simulation
 from matplotlib import pyplot as plt
 from setup import device, xy, width, height
 
 print(device)
 
+factor = 1
+
 def createCells():
     cells = []
-    for i in range(width//5, 4*width//5, width//5):
-        for j in range(height//5, 4*height//5, width//5):
-            print(i, j)
+    for i in range(width//7, 6*width//7, width//7):
+        for j in range(height//7, 6*height//7, width//7):
             pos = torch.FloatTensor([i, j]).to(device)
-            M = torch.FloatTensor([[3.6e-02, 1.3e-05], [1.3e-05, 3.6e-02]]).to(device)
+            M = (2**factor)*torch.FloatTensor([[3.6e-02, 1.3e-05], [1.3e-05, 3.6e-02]]).to(device)
             M.requires_grad=True
             pos.requires_grad=True
             cells.append(Cell(M, pos))
@@ -44,7 +45,7 @@ def optimize_position(iterations, target, stage=2):
         loss = diff.pow(2).sum()
         if(i%100 == 99):
             print('plotting...')
-            plot(diff, simulated)
+            #plot(diff, simulated)
         loss.backward(retain_graph=True)
         optimizer1.step()
 
@@ -56,19 +57,9 @@ def optimize_pose(iterations, target, stage=2):
         loss = diff.pow(2).sum()
         if(i%100 == 99):
             print('plotting...')
-            plot(diff, simulated)
+            #plot(diff, simulated)
         loss.backward(retain_graph=True)
         optimizer2.step()
-
-def optimize_vertices(iterations, target, optimizer):
-    print('optimizing vertices for rendering...')
-    for i in range(iterations):
-        optimizer.zero_grad()
-        img = redner_simulation(cells)
-        loss = (target-img).pow(2).sum()
-        loss.backward(retain_graph=True)
-        optimizer.step()
-
 
 def split(threshold):
     print('splitting...')
@@ -77,8 +68,8 @@ def split(threshold):
         ecc = 1-(s[1]/s[0])**2
         if(ecc > threshold**2 and cell.visible):
             cell.delete()
-            M1 = torch.FloatTensor([[1/16, 0], [0, 1/16]]).to(device)
-            M2 = torch.FloatTensor([[1/16, 0], [0, 1/16]]).to(device)
+            M1 = (2**factor)*torch.FloatTensor([[1/16, 0], [0, 1/16]]).to(device)
+            M2 = (2**factor)*torch.FloatTensor([[1/16, 0], [0, 1/16]]).to(device)
             pos = cell.position
             pos.requires_grad = False
             offset = torch.FloatTensor([-u[0, 1], u[0, 0]]).to(device)/s[0]
@@ -100,14 +91,6 @@ def delete_superfluous(threshold, target):
         if(loss > norm*threshold or simulated.sum() < 1e-1):
             cell.delete()
 
-def create_polygons(cells, threshold):
-    print('creating vertex lists for polygons...')
-    for cell in cells:
-        if cell.visible:
-            cell.create_shape(threshold)
-        del cell.pose_matrix
-    torch.cuda.empty_cache()
-
 i = 0
 print("go")
 for path in sorted(glob.glob('../data/stemcells/closed01/*.png')):
@@ -122,6 +105,7 @@ for path in sorted(glob.glob('../data/stemcells/closed01/*.png')):
     cells = createCells()
     
     diff, simulated = loss_fn(cells, target)
+    #plot(diff, simulated)
     optimizer1 = torch.optim.Adam(positions(cells), lr=5)
     optimizer2 = torch.optim.Adam(positions(cells) + pose_matrices(cells), lr=2e-5)
     optimize_position(200, target, 1)
@@ -137,28 +121,23 @@ for path in sorted(glob.glob('../data/stemcells/closed01/*.png')):
         optimizer2 = torch.optim.Adam(positions(cells) + pose_matrices(cells), lr=2e-5)
         optimizer1 = torch.optim.Adam(positions(cells), lr=5)
         optimize_position(100, target)
-        optimize_pose(200, target)
-        split(0.65)
+        optimize_pose(500, target)
+        split(0.63)
         optimizer2 = torch.optim.Adam(positions(cells) + pose_matrices(cells), lr=2e-5)
         optimizer1 = torch.optim.Adam(positions(cells), lr=5)
         optimize_position(100, target)
-        optimize_pose(200, target)
+        optimize_pose(500, target)
         delete_superfluous(1, target)
 
         pos_array = torch.stack(positions(cells))
         pose_array = torch.stack(pose_matrices(cells))
-        create_polygons(cells, 50)
-        imgg = redner_simulation(cells)
 
-        plot(imgg, imgg)
-
-        #torch.save(pos_array, 'data/stemcells/simulated/'+f'{i:03}'+'pos.pt')
-        #torch.save(pose_array, 'data/stemcells/simulated/'+f'{i:03}'+'pose.pt')
+        torch.save(pos_array, '../data/stemcells/simulated/'+f'{i:03}'+'pos.pt')
+        torch.save(pose_array, '../data/stemcells/simulated/'+f'{i:03}'+'pose.pt')
 
         #simulated = render_simulation(cells, stage=2)
         #torch.save(simulated, 'data/stemcells/simulated/'+f'{i:03}'+'simulatedimg.pt')
 
-        del simulated
         del pose_array
         del pos_array
 

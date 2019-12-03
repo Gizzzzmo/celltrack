@@ -6,7 +6,7 @@ from matplotlib import pyplot as plt
 
 #
 imgpaths  = []
-for path in glob.glob('data/stemcells/01/*.tif'):
+for path in glob.glob('../data/stemcells/01/*.tif'):
     imgpaths.append(path)
 
 imgpaths.sort()
@@ -16,7 +16,7 @@ imgs = [ndimage.gaussian_filter(imageio.imread(path), 2) for path in imgpaths]
 imgseries = np.stack(imgs)
 
 print(imgseries.shape)
-binarized = (imgseries > 2)
+binarized = (imgseries > 1)
 plt.imshow(binarized[0])
 plt.show()
 structure1 = np.ones((3, 13, 13))

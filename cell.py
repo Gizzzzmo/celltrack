@@ -1,6 +1,6 @@
 import torch
 import math
-from setup import xy, width, height, device, depth, granularity, pyredner, cell_indices, cam, materials, area_lights, shape_light
+from setup import xy, width, height, device, granularity
 
 class Cell:
 
@@ -9,7 +9,7 @@ class Cell:
         self.pose_matrix = pose_matrix
         self.position = position
         self.vertices = None
-        self.shape = None
+        self.diffuse_reflectance = None
 
         self.b = position.expand(1, -1).transpose(0, 1)
     
@@ -23,7 +23,7 @@ class Cell:
     def delete(self):
         self.visible = False
 
-    def create_polygon(self, threshold):
+    def create_polygon(self, threshold=112):
         # phi is the set of angles to sample
         # TODO one could potentially sample the angles more closely where one is closer to the main axis,
         # so as to ultimately have equidistant points on the ellipse boundary
@@ -32,20 +32,8 @@ class Cell:
         r = torch.stack([torch.cos(phi), torch.sin(phi)])
         # multiplying the pose_matrix with r yields the set of distorted vectors
         offset = (math.pow(-math.log(threshold/255), .25) / torch.matmul(self.pose_matrix, r).pow(2).sum(dim=0).pow(.5)) * r
-        z = torch.zeros(granularity, device=device, dtype=torch.float32)
-        self.vertices = torch.cat([self.position - offset.transpose(0, 1), torch.stack([z], dim=1)], dim=1).detach()
+        self.vertices = (self.position - offset.transpose(0, 1)).detach()
         self.vertices.requires_grad = True
-    
-    def create_shape(self, threshold):
-        self.create_polygon(threshold)
-        self.shape = pyredner.Shape(\
-            vertices = self.vertices,
-            indices = cell_indices,
-            uvs = None,
-            normals = None,
-            material_id = 0)
-
-
 
 def positions(cells):
     return [cell.position for cell in cells if cell.visible]
@@ -53,33 +41,26 @@ def positions(cells):
 def pose_matrices(cells):
     return [cell.pose_matrix for cell in cells if cell.visible]
 
-def redner_shapes(cells):
-    return [cell.shape for cell in cells if cell.visible]
+def redner_vertices(cells):
+    return [cell.vertices for cell in cells if cell.visible]
 
-def render_simulation(cells, stage=1, simulated=torch.zeros((width, height), device=device)):
+def redner_reflectances(cells):
+    return [cell.diffuse_reflectance for cell in cells if cell.visible]
+
+def render_simulation(cells, stage=1, simulated=None):
+    if simulated is None:
+        simulated = torch.zeros((width, height), device=device)
     for cell in cells:
         if(cell.visible):
             simulated += cell.render(xy, stage)
 
     return simulated
 
-def render_vertex_list(cells, value=255, simulated=torch.zeros((width, height), device=device)):
+def render_vertex_list(cells, value=255, simulated=None):
+    if simulated is None:
+        simulated = torch.zeros((width, height), device=device)
     for cell in cells:
         if(cell.visible):
             for i in range(len(cell.vertices)):
                 simulated[int(cell.vertices[i, 1]), int(cell.vertices[i, 0])] = value
     return simulated
-
-def redner_simulation(cells):
-    shapes = [shape_light] + redner_shapes(cells)
-    
-    scene = pyredner.Scene(cam, shapes, materials, area_lights)
-
-    scene_args = pyredner.RenderFunction.serialize_scene(\
-        scene = scene,
-        num_samples = 16,
-        max_bounces = 1)
-
-    render = pyredner.RenderFunction.apply
-
-    return render(0, *scene_args)
