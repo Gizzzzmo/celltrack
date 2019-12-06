@@ -199,8 +199,10 @@ for epoch in range(num_batches):
     output = netD(fake).view(-1)
     # Calculate G's loss based on this output
     errG = criterion(output, label)
+    errRec = (inputs - output).pow(2).sum()
+    err = errG + errRec
     # Calculate gradients for G
-    errG.backward()
+    err.backward()
     D_G_z2 = output.mean().item()
     # Update G
     optimizerG.step()
