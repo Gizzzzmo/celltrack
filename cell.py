@@ -12,7 +12,15 @@ class Cell:
         self.diffuse_reflectance = None
 
         self.b = position.expand(1, -1).transpose(0, 1)
-    
+    @classmethod
+    def from_vertices(cls, vertices):
+        cell = Cell(None, None)
+
+        self.visible = True
+        cell.vertices = vertices
+        return cell
+
+
     def render(self, x, stage=1):
         diff = x-self.b
         transformed = torch.matmul(self.pose_matrix, diff)

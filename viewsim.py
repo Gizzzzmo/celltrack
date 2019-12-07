@@ -27,16 +27,12 @@ def show(i):
         c.create_polygon(154)
     sim = render_vertex_list(a[i], 255, original[i+1])
     sim0 = render_vertex_list(a[i], 255, closed[i+1])
+    sim1 = render_simulation(a[i])
 
     plt.figure(1)
     plt.imshow(sim.detach())
     plt.figure(2)
     plt.imshow(sim0.detach())
-
-    if(pyredner is not None):
-        for c in a[i]:
-            c.create_shape(154)
-        sim1 = redner_simulation(a[i])
-        plt.figure(3)
-        plt.imshow(sim1.detach())
+    plt.figure(3)
+    plt.imshow(sim1.detach())
     plt.show()
