@@ -25,7 +25,7 @@ class Cell:
 
     def create_polygon(self, threshold=112):
         # phi is the set of angles to sample
-        # TODO one could potentially sample the angles more closely where one is closer to the main axis,
+        # TODO one could potentially sample the angles more closely where one is closer to the ellipse's principal axis,
         # so as to ultimately have equidistant points on the ellipse boundary
         phi = torch.arange(0, 2*math.pi, 2*math.pi/granularity, device=device, dtype=torch.float32)
         # r are are the resulting directional vectors of the angles

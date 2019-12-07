@@ -22,22 +22,20 @@ for path in sorted(glob.glob('../data/stemcells/01/*.tif')):
     targets = targets + [target]
 
 pyredner.set_use_gpu(torch.cuda.is_available())
-factor = 2**2
-distance_in_widths = 10.0
+distance_in_widths = 20.0
 
 cell_indices = torch.tensor([[0, i+2, i+1] for i in range(granularity-2)], dtype = torch.int32,
                 device = device)
 
 materials = []
 shapes = []
+z = torch.zeros(granularity, device=device, dtype=torch.float32)
 for i, c in enumerate(cells):
     c.create_polygon(112)
     c.diffuse_reflectance = torch.tensor([0.25, 0.25, 0.25], device=device, requires_grad=True)
     materials = materials + [pyredner.Material(diffuse_reflectance=c.diffuse_reflectance)]
 
-    z = torch.zeros(granularity, device=device, dtype=torch.float32)
     vertices3d = torch.cat([c.vertices, torch.stack([z], dim=1)], dim=1)
-
     shapes = shapes + [pyredner.Shape(\
             vertices = vertices3d,
             indices = cell_indices,
@@ -68,7 +66,7 @@ shape_light = pyredner.Shape(\
 shapes = [shape_light] + shapes
 
 light = pyredner.AreaLight(shape_id = 0, 
-                           intensity = torch.tensor([100.0,100.0,100.0])/factor)
+                           intensity = torch.tensor([100.0,100.0,100.0]))
 area_lights = [light]
 
 scene = pyredner.Scene(cam, shapes, materials, area_lights)
@@ -116,7 +114,7 @@ for t in range(30):
     # Take a gradient descent step.
     optimizer.step()
 
-optimizer = torch.optim.Adam(cell.redner_vertices(cells), lr=1000)
+optimizer = torch.optim.Adam(cell.redner_vertices(cells), lr=1e-1)
 
 for t in range(100):
     print('vertex iteration', t)
@@ -128,6 +126,8 @@ for t in range(100):
         max_bounces = 1)
     # Important to use a different seed every iteration, otherwise the result
     # would be biased.
+    for shape, c in zip(shapes[1:-1], cells):
+        shape.vertices[:, 0:2] = c.vertices
     img = render(t+1, *scene_args).sum(dim=-1)
     diff = (target - img)
     if (t % 20 == 19):
@@ -140,11 +140,12 @@ for t in range(100):
     loss = diff.pow(2).sum()
 
     # Backpropagate the gradients.
-    loss.backward()
-
-    print(cells[0].vertices.grad)
-
+    loss.backward(retain_graph=True)
+    before = cells[0].vertices.clone()
+    
     optimizer.step()
+
+
 
 pyredner.imwrite(img.cpu(), 'results/optimize_single_triangle/final.png')
 loss = (img-target).abs()
