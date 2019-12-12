@@ -11,7 +11,7 @@ height = 2**8
 depth = 507
 
 # the number of vertices used to simuale one cell
-granularity = 100
+granularity = 25
 
 
 # creating a coordinate grid to apply functions to

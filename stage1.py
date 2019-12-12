@@ -1,17 +1,25 @@
 import torch
 import numpy as np
 import sys
+import os
 import imageio
 import glob
 import torchvision
 import skimage
 from cell import Cell, positions, pose_matrices, render_simulation
-from matplotlib import pyplot as plt
+from matplotlib import pyplot as plt, animation
 from setup import device, xy, width, height
 
 print(device)
 
 factor = 1
+splitting_eccentricity = 0.71
+pos_lr = 4
+pose_lr = 5e-5
+simulation_sequence = []
+loss_sequence = []
+createanimation = False
+plotit = False
 
 def createCells():
     cells = []
@@ -43,9 +51,11 @@ def optimize_position(iterations, target, stage=2):
         optimizer1.zero_grad()
         diff, simulated = loss_fn(cells, target, stage)
         loss = diff.pow(2).sum()
-        if(i%100 == 99):
+        simulation_sequence.append(simulated.detach().cpu().numpy())
+        loss_sequence.append(diff.abs().detach().cpu().numpy())
+        if(i%100 == 99) and plotit:
             print('plotting...')
-            #plot(diff, simulated)
+            plot(diff, simulated)
         loss.backward(retain_graph=True)
         optimizer1.step()
 
@@ -54,10 +64,13 @@ def optimize_pose(iterations, target, stage=2):
     for i in range(iterations):
         optimizer2.zero_grad()
         diff, simulated = loss_fn(cells, target, stage)
+        if(createanimation):
+            simulation_sequence.append(simulated.detach().cpu().numpy())
+            loss_sequence.append(diff.abs().detach().cpu().numpy())
         loss = diff.pow(2).sum()
-        if(i%100 == 99):
+        if(i%100 == 99) and plotit:
             print('plotting...')
-            #plot(diff, simulated)
+            plot(diff, simulated)
         loss.backward(retain_graph=True)
         optimizer2.step()
 
@@ -95,7 +108,7 @@ i = 0
 print("go")
 for path in sorted(glob.glob('../data/stemcells/closed01/*.png')):
     print(path)
-    if(i == 0):
+    if(i < 56):
         i += 1
         continue
     raw_image = imageio.imread(path)
@@ -106,38 +119,62 @@ for path in sorted(glob.glob('../data/stemcells/closed01/*.png')):
     
     diff, simulated = loss_fn(cells, target)
     #plot(diff, simulated)
-    optimizer1 = torch.optim.Adam(positions(cells), lr=5)
-    optimizer2 = torch.optim.Adam(positions(cells) + pose_matrices(cells), lr=2e-5)
+    optimizer1 = torch.optim.Adam(positions(cells), lr=pos_lr)
+    optimizer2 = torch.optim.Adam(positions(cells) + pose_matrices(cells), lr=pose_lr)
     optimize_position(200, target, 1)
     optimize_pose(200, target)
     delete_superfluous(1.05, target)
     if(positions(cells)):
-        split(0.65)
-        optimizer2 = torch.optim.Adam(positions(cells) + pose_matrices(cells), lr=2e-5)
-        optimizer1 = torch.optim.Adam(positions(cells), lr=5)
+        split(splitting_eccentricity)
+        optimizer2 = torch.optim.Adam(positions(cells) + pose_matrices(cells), lr=pose_lr)
+        optimizer1 = torch.optim.Adam(positions(cells), lr=pos_lr)
         optimize_position(100, target)
         optimize_pose(200, target)
-        split(0.65)
-        optimizer2 = torch.optim.Adam(positions(cells) + pose_matrices(cells), lr=2e-5)
-        optimizer1 = torch.optim.Adam(positions(cells), lr=5)
+        split(splitting_eccentricity)
+        optimizer2 = torch.optim.Adam(positions(cells) + pose_matrices(cells), lr=pose_lr)
+        optimizer1 = torch.optim.Adam(positions(cells), lr=pos_lr)
         optimize_position(100, target)
         optimize_pose(500, target)
-        split(0.63)
-        optimizer2 = torch.optim.Adam(positions(cells) + pose_matrices(cells), lr=2e-5)
-        optimizer1 = torch.optim.Adam(positions(cells), lr=5)
+        split(splitting_eccentricity)
+        optimizer2 = torch.optim.Adam(positions(cells) + pose_matrices(cells), lr=pose_lr)
+        optimizer1 = torch.optim.Adam(positions(cells), lr=pos_lr)
         optimize_position(100, target)
         optimize_pose(500, target)
         delete_superfluous(1, target)
 
+        target_dir = '../data/stemcells/simulated/'+str(width)+'x'+str(height)+'_'+str(splitting_eccentricity)+'_'+str(pos_lr)+'_'+str(pose_lr)+'/'
+        if not os.path.exists(target_dir):
+            os.makedirs(target_dir)
+
+        if createanimation:
+            fig = plt.figure()
+            im = plt.imshow(np.zeros((width, height)), vmin=0, vmax=255)
+            def animate(i):
+                factor = 255.0/np.max(simulation_sequence[i])
+                im.set_array(factor* simulation_sequence[i])
+                return [im]
+            anim = animation.FuncAnimation(fig, animate, init_func=lambda: [im], frames=len(simulation_sequence), interval=1, blit=True)
+            anim.save(target_dir + 'simulated_blobs_' + str(i) +'.mp4', fps=30, extra_args=['-vcodec', 'libx264'])
+            plt.show()
+
+            fig = plt.figure()
+            im = plt.imshow(np.zeros((width, height)), vmin=0, vmax=255)
+            def animate(i):
+                factor = 255.0/np.max(loss_sequence[i])
+                im.set_array(factor* loss_sequence[i])
+                return [im]
+            anim = animation.FuncAnimation(fig, animate, init_func=lambda: [im], frames=len(loss_sequence), interval=1, blit=True)
+            anim.save(target_dir + 'simulated_blobs_loss_' + str(i) +'.mp4', fps=30, extra_args=['-vcodec', 'libx264'])
+            plt.show()
+
         pos_array = torch.stack(positions(cells))
         pose_array = torch.stack(pose_matrices(cells))
+        torch.save(pos_array, target_dir+f'{i:03}'+'pos.pt')
+        torch.save(pose_array, target_dir+f'{i:03}'+'pose.pt')
 
-        torch.save(pos_array, '../data/stemcells/simulated/'+f'{i:03}'+'pos.pt')
-        torch.save(pose_array, '../data/stemcells/simulated/'+f'{i:03}'+'pose.pt')
-
-        #simulated = render_simulation(cells, stage=2)
-        #torch.save(simulated, 'data/stemcells/simulated/'+f'{i:03}'+'simulatedimg.pt')
-
+        if(createanimation):
+            simulation_sequence = []
+            loss_sequence = []
         del pose_array
         del pos_array
 

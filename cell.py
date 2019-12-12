@@ -67,6 +67,8 @@ def render_simulation(cells, stage=1, simulated=None):
 def render_vertex_list(cells, value=255, simulated=None):
     if simulated is None:
         simulated = torch.zeros((width, height), device=device)
+    else:
+        simulated = simulated.clone()
     for cell in cells:
         if(cell.visible):
             for i in range(len(cell.vertices)):

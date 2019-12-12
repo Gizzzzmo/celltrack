@@ -4,8 +4,7 @@ import cell
 import imageio
 import torch
 import glob
-from setup import pyredner
-from cell import render_vertex_list, render_simulation, redner_simulation
+from cell import render_vertex_list, render_simulation
 
 a = load.simulated_ellipses()
 cells = a[49]

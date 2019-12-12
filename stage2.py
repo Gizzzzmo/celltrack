@@ -8,9 +8,11 @@ import skimage
 import glob
 from setup import width, height, granularity, device
 import load
-import matplotlib.pyplot as plt
+from matplotlib import pyplot as plt, animation
 
-cells = load.simulated_ellipses()[0]
+simulations = load.simulated_ellipses('256x256_0.71_4_5e-05')
+cells = load.simulated_ellipses('256x256_0.71_4_5e-05')[0]
+plotit = False
 
 targets = []
 for path in sorted(glob.glob('../data/stemcells/01/*.tif')):
@@ -21,6 +23,7 @@ for path in sorted(glob.glob('../data/stemcells/01/*.tif')):
 
     targets = targets + [target]
 
+print(len(simulations), len(targets))
 pyredner.set_use_gpu(torch.cuda.is_available())
 distance_in_widths = 20.0
 
@@ -87,6 +90,14 @@ scene_args = pyredner.RenderFunction.serialize_scene(\
 
 optimizer = torch.optim.Adam(cell.redner_reflectances(cells), lr=1e-2)
 
+def show_vertices():
+    vlistcolored = cell.render_vertex_list(cells, torch.max(target), target)
+    plt.imshow(vlistcolored.detach().cpu())
+    plt.show()
+
+if(plotit):
+    show_vertices()
+
 for t in range(30):
     print('iteration:', t)
     optimizer.zero_grad()
@@ -99,7 +110,7 @@ for t in range(30):
     # would be biased.
     img = render(t+1, *scene_args).sum(dim=-1)
     diff = (target - img)
-    if (t % 30 == 29):
+    if (t % 30 == 29) and plotit:
         plt.figure(1)
         plt.imshow(img.cpu().detach().numpy())
         plt.figure(2)
@@ -114,7 +125,9 @@ for t in range(30):
     # Take a gradient descent step.
     optimizer.step()
 
-optimizer = torch.optim.Adam(cell.redner_vertices(cells), lr=1e-1)
+optimizer = torch.optim.Adam(cell.redner_vertices(cells), lr=2e-1)
+vertex_sequence = []
+simulation_sequence = []
 
 for t in range(100):
     print('vertex iteration', t)
@@ -123,19 +136,27 @@ for t in range(100):
     scene_args = pyredner.RenderFunction.serialize_scene(\
         scene = scene,
         num_samples = 4, # We use less samples in the Adam loop.
-        max_bounces = 1)
+        max_bounces = 1
+    )
     # Important to use a different seed every iteration, otherwise the result
     # would be biased.
     for shape, c in zip(shapes[1:-1], cells):
         shape.vertices[:, 0:2] = c.vertices
     img = render(t+1, *scene_args).sum(dim=-1)
     diff = (target - img)
-    if (t % 20 == 19):
-        plt.figure(1)
-        plt.imshow(img.cpu().detach().numpy())
-        plt.figure(2)
-        plt.imshow(diff.abs().cpu().detach())
-        plt.show()
+    if (t % 1 == 0):
+        vlistcolored = cell.render_vertex_list(cells, torch.max(target), target).detach().cpu()
+        cpuimg = img.detach().cpu()
+        vertex_sequence = vertex_sequence + [vlistcolored.numpy()]
+        simulation_sequence = simulation_sequence + [cpuimg.numpy()]
+        if(t % 20 == 19) and plotit:
+            plt.figure(1)
+            plt.imshow(cpuimg)
+            plt.figure(2)
+            plt.imshow(diff.abs().cpu().detach())
+            plt.figure(3)
+            plt.imshow(vlistcolored)
+            plt.show()
     # Compute the loss function. Here it is L2.
     loss = diff.pow(2).sum()
 
@@ -145,8 +166,22 @@ for t in range(100):
     
     optimizer.step()
 
+fig = plt.figure()
+im = plt.imshow(np.zeros((width, height)), vmin=0, vmax=255)
+def animate(i):
+    factor = 255.0/np.max(vertex_sequence[i])
+    im.set_array(factor* vertex_sequence[i])
+    return [im]
+anim = animation.FuncAnimation(fig, animate, init_func=lambda: [im], frames=len(vertex_sequence), interval=1, blit=True)
+anim.save('vertex_animation.mp4', fps=10, extra_args=['-vcodec', 'libx264'])
+plt.show()
 
-
-pyredner.imwrite(img.cpu(), 'results/optimize_single_triangle/final.png')
-loss = (img-target).abs()
-pyredner.imwrite(loss.cpu(), 'results/optimize_single_triangle/finalloss.png')
+fig = plt.figure()
+im = plt.imshow(np.zeros((width, height)), vmin=0, vmax=255)
+def animate(i):
+    factor = 255.0/np.max(simulation_sequence[i])
+    im.set_array(factor* simulation_sequence[i])
+    return [im]
+anim = animation.FuncAnimation(fig, animate, init_func=lambda: [im], frames=len(vertex_sequence), interval=1, blit=True)
+anim.save('simulated_cells.mp4', fps=10, extra_args=['-vcodec', 'libx264'])
+plt.show()
