@@ -43,6 +43,9 @@ class Cell:
         self.vertices = (self.position - offset.transpose(0, 1)).detach()
         self.vertices.requires_grad = True
 
+def vertex_lists(cells):
+    return [cell.vertices for cell in cells if cell.visible]
+
 def positions(cells):
     return [cell.position for cell in cells if cell.visible]
 

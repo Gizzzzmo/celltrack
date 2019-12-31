@@ -17,8 +17,8 @@ def simulated_ellipses(path=''):
     positions = [[]]
     pose_matrices = [[]]
 
-    positions += sorted(glob.glob('../data/stemcells/simulated/'+path+'???pos.pt'))
-    pose_matrices += sorted(glob.glob('../data/stemcells/simulated/'+path+'???pose.pt'))
+    positions += sorted(glob.glob('../data/stemcells/simulated/'+path+'/???pos.pt'))
+    pose_matrices += sorted(glob.glob('../data/stemcells/simulated/'+path+'/???pose.pt'))
 
     positions = reduce(lambda a, b: a + [tensor_to_list(torch.load(b, map_location=device))], positions)
     pose_matrices = reduce(lambda a, b: a + [tensor_to_list(torch.load(b, map_location=device))], pose_matrices)
