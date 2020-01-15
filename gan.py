@@ -24,7 +24,7 @@ print("Seed: ", manualSeed)
 random.seed(manualSeed)
 torch.manual_seed(manualSeed)
 
-pathtocelldata = ""
+pathtocelldata = '256x256_0.71_4_5e-05'
 pathtoimages = ""
 
 workers = 2
@@ -51,7 +51,6 @@ beta1 = 0.5
 
 ngpu = 1
 
-dataloader = load.TransformingLoader(pathtocelldata, pathtoimages, batch_size, width, height)
 
 def weights_init(m):
     classname = m.__class__.__name__
@@ -148,6 +147,17 @@ img_list = []
 G_losses = []
 D_losses = []
 iters = 0
+
+simulated_ellipses = load.simulated_ellipses(pathtocelldata)targets = []
+
+for path in sorted(glob.glob('../data/stemcells/01/*.tif')):
+    raw_image = imageio.imread(path)
+
+    target = torch.from_numpy(skimage.transform.rescale(raw_image,
+        (width/raw_image.shape[0], height/raw_image.shape[1]))).float().to(device)
+
+    targets = targets + [target]
+
 
 print("Starting Training Loop...")
 # For each epoch

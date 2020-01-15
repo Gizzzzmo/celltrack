@@ -40,7 +40,7 @@ class TransformingLoader:
     def __init__(self, pathtocelldata, pathtoimages, batch_size, width, height):
         self.width = width
         self.height = height
-        self.celldatapaths = sorted(glob.glob(pathtocelldata))
+        self.simulated_ellipses = simulated_ellipses(pathtocelldata)
         self.imgpaths = sorted(glob.glob(pathtoimages))
         assert(len(self.imgpaths) == len(self.celldatapaths))
         self.batch_size = batch_size
