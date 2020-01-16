@@ -14,7 +14,7 @@ import numpy as numpy
 import matplotlib.pyplot as plt
 import matplotlib.animation as animation
 from IPython.display import HTML
-import load
+from load import RotatingSelectiveLoader
 from setup import device, width, height
 
 
@@ -24,7 +24,7 @@ print("Seed: ", manualSeed)
 random.seed(manualSeed)
 torch.manual_seed(manualSeed)
 
-pathtocelldata = '256x256_0.71_4_5e-05'
+pathtocelldata = ''
 pathtoimages = '../data/stemcells/01/*.tif'
 
 workers = 2
@@ -147,6 +147,8 @@ img_list = []
 G_losses = []
 D_losses = []
 iters = 0
+
+dataloader = RotatingSelectiveLoader(pathtocelldata, pathtoimages, 64, width, height)
 
 print("Starting Training Loop...")
 # For each epoch

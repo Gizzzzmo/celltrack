@@ -79,11 +79,11 @@ class RotatingSelectiveLoader:
                 input_pos = self.simulated_ellipses[self.experiment][self.cell].position
                 input_pose = self.simulated_ellipses[self.experiment][self.cell].pose_matrix
                 input_batch.append(torch.cat([input_pos, torch.flatten(input_pose)]))
-                plt.figure(1)
-                plt.imshow(render_simulation([self.simulated_ellipses[self.experiment][self.cell]]).detach())
-                plt.figure(2)
-                plt.imshow(img)
-                plt.show()
+                #plt.figure(1)
+                #plt.imshow(render_simulation([self.simulated_ellipses[self.experiment][self.cell]]).detach())
+                #plt.figure(2)
+                #plt.imshow(img)
+                #plt.show()
                 target = (0 < render_simulation([self.simulated_ellipses[self.experiment][self.cell]])) * img
                 target_batch.append(target)
                 for j in range(3):
