@@ -26,7 +26,7 @@ def simulated_ellipses(path=''):
 
     cells = [[]] + list(zip(positions, pose_matrices))
 
-    return reduce(lambda a, b: a + [reduce(lambda c, d: c + [Cell(d[1], d[0])], [[]] + list(zip(b[0], b[1])))], cells)
+    return reduce(lambda a, b: a + [reduce(lambda c, d: c + [Cell(d[1], d[0], 0)], [[]] + list(zip(b[0], b[1])))], cells)
 
 def simulated_cell_vertices(path):
     vertices = [[]]

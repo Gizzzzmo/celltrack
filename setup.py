@@ -4,8 +4,8 @@ import math
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
 # width and height of the images, will be scaled automatically
-width = 2**9
-height = 2**9
+width = 2**8
+height = 2**8
 
 # the z coordinate of the plane in which the simulated cells will be placed with pyredner
 depth = 507

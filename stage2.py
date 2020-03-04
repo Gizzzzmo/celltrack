@@ -8,24 +8,39 @@ import imageio
 import skimage
 import glob
 from setup import width, height, granularity, device
+from collections import deque
 import load
 from matplotlib import pyplot as plt, animation
 
-simulated_path = '256x256_0.71_4_5e-05'
-simulations = load.simulated_ellipses(simulated_path)
-plotit = False
-saveanimation = False
+simulated_path = None#'256x256_0.71_4_5e-05'
+simulations = None
+if simulated_path:
+    simulations = load.simulated_ellipses(simulated_path)
+plotit = True
+saveanimation = True
 
-targets = []
+
+targets = deque([])
 for path in sorted(glob.glob('../data/stemcells/01/*.tif')):
     raw_image = imageio.imread(path)
 
     target = torch.from_numpy(skimage.transform.rescale(raw_image,
         (width/raw_image.shape[0], height/raw_image.shape[1]))).float().to(device)
 
-    targets = targets + [target]
+    targets.append(target)
 
-print(len(simulations), len(targets))
+if simulations:
+    print(len(simulations), len(targets))
+    popping_front = True
+    while len(simulations) < len(targets):
+        if popping_front:
+            targets.popleft()
+        else:
+            targets.pop()
+        popping_front = not popping_front
+    print(len(simulations), len(targets))
+
+
 pyredner.set_use_gpu(torch.cuda.is_available())
 distance_in_widths = 20.0
 
@@ -54,21 +69,45 @@ shape_light = pyredner.Shape(\
 
 z = torch.zeros(granularity, device=device, dtype=torch.float32)
 
-for j, cells in enumerate(simulations):
+for j, target in enumerate(targets):
     materials = []
     shapes = []
-    for i, c in enumerate(cells):
-        c.create_polygon(112)
-        c.diffuse_reflectance = torch.tensor([0.25, 0.25, 0.25], device=device, requires_grad=True)
-        materials = materials + [pyredner.Material(diffuse_reflectance=c.diffuse_reflectance)]
+    cells = []
+    if simulations:
+        cells = simulations[j]
+        for i, c in enumerate(cells):
+            c.create_polygon(112)
+            c.diffuse_reflectance = torch.tensor([0.25, 0.25, 0.25], device=device, requires_grad=True)
+            materials = materials + [pyredner.Material(diffuse_reflectance=c.diffuse_reflectance)]
 
-        vertices3d = torch.cat([c.vertices, torch.stack([z], dim=1)], dim=1)
-        shapes = shapes + [pyredner.Shape(\
-                vertices = vertices3d,
-                indices = cell_indices,
-                uvs = None,
-                normals = None,
-                material_id = i)]
+            vertices3d = torch.cat([c.vertices, torch.stack([z], dim=1)], dim=1)
+            shapes = shapes + [pyredner.Shape(\
+                    vertices = vertices3d,
+                    indices = cell_indices,
+                    uvs = None,
+                    normals = None,
+                    material_id = i)]
+    else:
+        id = 0
+        for i in range(width//9, 8*width//9 + 1, width//9):
+            for k in range(height//9, 8*height//9 + 1, width//9):
+                pos = torch.FloatTensor([i, k]).to(device)
+                M = 2.7*torch.FloatTensor([[3.6e-02, 1.3e-05], [1.3e-05, 3.6e-02]]).to(device)
+                c = cell.Cell(M, pos, 0)
+
+                c.create_polygon(100)
+                c.diffuse_reflectance = torch.tensor([0.25, 0.25, 0.25], device=device, requires_grad=True)
+                materials = materials + [pyredner.Material(diffuse_reflectance=c.diffuse_reflectance)]
+                cells.append(c)
+
+                vertices3d = torch.cat([c.vertices, torch.stack([z], dim=1)], dim=1)
+                shapes = shapes + [pyredner.Shape(\
+                        vertices = vertices3d,
+                        indices = cell_indices,
+                        uvs = None,
+                        normals = None,
+                        material_id = id)]
+                id += 1
 
     shapes = [shape_light] + shapes
 
@@ -78,21 +117,11 @@ for j, cells in enumerate(simulations):
 
     scene = pyredner.Scene(cam, shapes, materials, area_lights)
 
-    scene_args = pyredner.RenderFunction.serialize_scene(\
-        scene = scene,
-        num_samples = 16,
-        max_bounces = 1)
-
     render = pyredner.RenderFunction.apply
-    target = targets[j+1]
 
-    scene_args = pyredner.RenderFunction.serialize_scene(\
-        scene = scene,
-        num_samples = 16,
-        max_bounces = 1)
     # Render the initial guess
 
-    optimizer = torch.optim.Adam(cell.redner_reflectances(cells), lr=1e-2)
+    optimizerref = torch.optim.Adam(cell.redner_reflectances(cells), lr=1e-2)
 
     def show_vertices():
         vlistcolored = cell.render_vertex_list(cells, torch.max(target), target)
@@ -105,7 +134,7 @@ for j, cells in enumerate(simulations):
     # Optimize material properties of cells 
     for t in range(30):
         print('iteration:', t)
-        optimizer.zero_grad()
+        optimizerref.zero_grad()
         # Forward pass: render the image
         scene_args = pyredner.RenderFunction.serialize_scene(\
             scene = scene,
@@ -113,7 +142,7 @@ for j, cells in enumerate(simulations):
             max_bounces = 1)
         # Important to use a different seed every iteration, otherwise the result
         # would be biased.
-        img = render(t+1, *scene_args).sum(dim=-1)
+        img = render(t, *scene_args).sum(dim=-1)
         diff = (target - img)
         if (t % 30 == 29) and plotit:
             plt.figure(1)
@@ -128,8 +157,9 @@ for j, cells in enumerate(simulations):
         loss.backward()
 
         # Take a gradient descent step.
-        optimizer.step()
+        optimizerref.step()
 
+    optimizerref = torch.optim.Adam(cell.redner_reflectances(cells), lr=1e-2)
     optimizer = torch.optim.Adam(cell.redner_vertices(cells), lr=2e-1)
     vertex_sequence = []
     simulation_sequence = []
@@ -138,6 +168,7 @@ for j, cells in enumerate(simulations):
     for t in range(100):
         print('vertex iteration', t)
         optimizer.zero_grad()
+        optimizerref.zero_grad()
         # Forward pass: render the image
         scene_args = pyredner.RenderFunction.serialize_scene(\
             scene = scene,
@@ -171,7 +202,10 @@ for j, cells in enumerate(simulations):
         before = cells[0].vertices.clone()
         
         optimizer.step()
-
+        optimizerref.step()
+        
+    if not simulated_path:
+        simulated_path = 'other_initilization'
     target_dir = '../data/stemcells/simulated/' + simulated_path + '/optimized_vertex_lists/'
 
     if not os.path.exists(target_dir):

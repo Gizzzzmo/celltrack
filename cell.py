@@ -1,10 +1,12 @@
 import torch
 import math
-from setup import xy, width, height, device, granularity
+from setup import xy, width, height, device, granularity, device
 
 class Cell:
 
-    def __init__(self, pose_matrix, position):
+    def __init__(self, pose_matrix, position, brightness):
+        self.brightness  = torch.FloatTensor([brightness]).to(device)
+        self.brightness.requires_grad = True
         self.visible = True
         self.pose_matrix = pose_matrix
         self.position = position
@@ -14,9 +16,9 @@ class Cell:
         self.b = position.expand(1, -1).transpose(0, 1)
     @classmethod
     def from_vertices(cls, vertices):
-        cell = Cell(None, None)
+        cell = Cell(None, None, 0)
 
-        self.visible = True
+        cell.visible = True
         cell.vertices = vertices
         return cell
 
@@ -25,8 +27,7 @@ class Cell:
         diff = x-self.b
         transformed = torch.matmul(self.pose_matrix, diff)
         transformed_dist = torch.sum(transformed.pow(2), dim=(-2,)).pow(stage)
-
-        return 255*torch.exp(-transformed_dist)
+        return 255*torch.exp(-transformed_dist) * torch.log(1+torch.exp(self.brightness))
     
     def delete(self):
         self.visible = False
@@ -51,6 +52,9 @@ def positions(cells):
 
 def pose_matrices(cells):
     return [cell.pose_matrix for cell in cells if cell.visible]
+
+def brightnesses(cells):
+    return [cell.brightness for cell in cells if cell.visible]
 
 def redner_vertices(cells):
     return [cell.vertices for cell in cells if cell.visible]
