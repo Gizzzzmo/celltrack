@@ -7,7 +7,7 @@ import math
 import imageio
 import skimage
 import glob
-from setup import width, height, granularity, device
+from setup import width, height, granularity, device, density_diagram
 from collections import deque
 import load
 from matplotlib import pyplot as plt, animation
@@ -123,6 +123,33 @@ for j, target in enumerate(targets):
 
     optimizerref = torch.optim.Adam(cell.redner_reflectances(cells), lr=1e-2)
 
+    def wiggled_gradients():
+        for c in cells:
+            c.gradient_sum = 0
+        for offset in [-1, 1]:
+            for index in [0, 1]:
+                for shape, c in zip(shapes[1:-1], cells):
+                    if c.visible:
+                        c.vertices.data[:, index] += offset
+                        shape.vertices[:, 0:2] = c.vertices
+                scene_args = pyredner.RenderFunction.serialize_scene(\
+                    scene = scene,
+                    num_samples = 4,
+                    max_bounces = 1
+                )
+                img = render(1, *scene_args).sum(dim=-1)
+                diff = (target - img)
+                loss = diff.pow(2).sum()
+
+                loss.backward(retain_graph=True)
+
+                for c in cells:
+                    if c.visible:
+                        c.gradient_sum += c.vertices.grad.abs().sum()
+                        c.vertices.data[:, index] -= offset
+        
+        return [c.gradient_sum.item() for c in cells if c.visible]
+
     def show_vertices():
         vlistcolored = cell.render_vertex_list(cells, torch.max(target), target)
         plt.imshow(vlistcolored.detach().cpu())
@@ -131,6 +158,11 @@ for j, target in enumerate(targets):
     if(plotit):
         show_vertices()
 
+    wiggled = wiggled_gradients()
+    x, y = density_diagram(wiggled)
+    plt.plot(x, y)
+    plt.plot(np.array(wiggled), np.zeros((len(wiggled))), 'ro')
+    plt.show()
     # Optimize material properties of cells 
     for t in range(30):
         print('iteration:', t)
@@ -138,7 +170,7 @@ for j, target in enumerate(targets):
         # Forward pass: render the image
         scene_args = pyredner.RenderFunction.serialize_scene(\
             scene = scene,
-            num_samples = 4, # We use less samples in the Adam loop.
+            num_samples = 4,
             max_bounces = 1)
         # Important to use a different seed every iteration, otherwise the result
         # would be biased.
@@ -154,7 +186,7 @@ for j, target in enumerate(targets):
         loss = diff.pow(2).sum()
 
         # Backpropagate the gradients.
-        loss.backward()
+        loss.backward(retain_graph=True)
 
         # Take a gradient descent step.
         optimizerref.step()
@@ -172,7 +204,7 @@ for j, target in enumerate(targets):
         # Forward pass: render the image
         scene_args = pyredner.RenderFunction.serialize_scene(\
             scene = scene,
-            num_samples = 4, # We use less samples in the Adam loop.
+            num_samples = 4,
             max_bounces = 1
         )
         # Important to use a different seed every iteration, otherwise the result
@@ -204,6 +236,13 @@ for j, target in enumerate(targets):
         optimizer.step()
         optimizerref.step()
         
+
+    wiggled = wiggled_gradients()
+    x, y = density_diagram(wiggled)
+    plt.plot(x, y)
+    plt.plot(np.array(wiggled), np.zeros((len(wiggled))), 'ro')
+    plt.show()
+
     if not simulated_path:
         simulated_path = 'other_initilization'
     target_dir = '../data/stemcells/simulated/' + simulated_path + '/optimized_vertex_lists/'

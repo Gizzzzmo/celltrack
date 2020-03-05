@@ -8,7 +8,7 @@ import torchvision
 import skimage
 from cell import Cell, positions, pose_matrices, brightnesses, render_simulation
 from matplotlib import pyplot as plt, animation
-from setup import device, xy, width, height
+from setup import device, xy, width, height, density_diagram
 
 print(device)
 
@@ -140,6 +140,36 @@ def delete_superfluous(threshold, target):
                 print('deleted', cell.position)
                 cell.delete()
 
+def wiggled_gradients(target, stage=2):
+    gradients = []
+    for cell in cells:
+        if cell.visible:
+            print(cell.position)
+            cell.gradient_sum = 0
+            for offset in [-1, 1]:
+                cell.position.data[0] += offset
+
+                diff = loss_fn([cell], target, stage)[0]
+                loss = diff.pow(2).sum()
+                cell.position.grad = None
+                loss.backward(retain_graph=True)
+                cell.gradient_sum += cell.position.grad.abs().sum()
+
+                cell.position.data[0] -= offset
+                cell.position.data[1] += offset
+
+                diff = loss_fn([cell], target, stage)[0]
+                loss = diff.pow(2).sum()
+                cell.position.grad = None
+                loss.backward(retain_graph=True)
+                cell.gradient_sum += cell.position.grad.abs().sum()
+
+                cell.position.data[1] -= offset
+            
+            gradients.append(cell.gradient_sum.item())
+    
+    return gradients
+
 i = 0
 target_dir = '../data/stemcells/closed01/*.png' if preprocessed else '../data/stemcells/01/*.tif'
 print("go")
@@ -154,8 +184,12 @@ for path in sorted(glob.glob(target_dir)):
         (width/raw_image.shape[0], height/raw_image.shape[1]))).float().to(device)
     cells = createCells()
     
-    diff, simulated = loss_fn(cells, target)
-    #plot(diff, simulated)
+    wiggled = wiggled_gradients(target)
+    x, y = density_diagram(wiggled)
+    plt.plot(x, y)
+    plt.plot(np.array(wiggled), np.zeros((len(wiggled))), 'ro')
+    plt.show()
+
     optimize_brightness(50, target, cells)
     optimize_position_and_brightness(300, target, cells, stage=1)
     optimize_pose(200, target, cells)
@@ -173,7 +207,13 @@ for path in sorted(glob.glob(target_dir)):
         split(splitting_eccentricity)
         optimize_position(100, target, cells)
         optimize_pose(500, target, cells)
-        delete_superfluous(1, target)
+        
+        wiggled = wiggled_gradients(target)
+        x, y = density_diagram(wiggled)
+        plt.plot(x, y)
+        plt.plot(np.array(wiggled), np.zeros((len(wiggled))), 'ro')
+        plt.show()
+
         if createanimation:
             optimize_pose(100, target, cells)
 

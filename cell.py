@@ -24,6 +24,7 @@ class Cell:
 
 
     def render(self, x, stage=1):
+        self.b = self.position.expand(1, -1).transpose(0, 1)
         diff = x-self.b
         transformed = torch.matmul(self.pose_matrix, diff)
         transformed_dist = torch.sum(transformed.pow(2), dim=(-2,)).pow(stage)
