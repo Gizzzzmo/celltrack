@@ -12,8 +12,8 @@ class Cell:
         self.position = position
         self.vertices = None
         self.diffuse_reflectance = None
-
-        self.b = position.expand(1, -1).transpose(0, 1)
+        if position is not None:
+            self.b = position.expand(1, -1).transpose(0, 1)
     @classmethod
     def from_vertices(cls, vertices):
         cell = Cell(None, None, 0)
@@ -80,5 +80,6 @@ def render_vertex_list(cells, value=255, simulated=None):
     for cell in cells:
         if(cell.visible):
             for i in range(len(cell.vertices)):
-                simulated[int(cell.vertices[i, 1]), int(cell.vertices[i, 0])] = value
+                if (0 <= cell.vertices[i, 1] < width) and (0 <= cell.vertices[i, 0] < height):
+                    simulated[int(cell.vertices[i, 1]), int(cell.vertices[i, 0])] = value
     return simulated

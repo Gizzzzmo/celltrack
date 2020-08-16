@@ -28,14 +28,26 @@ def simulated_ellipses(path=''):
 
     return reduce(lambda a, b: a + [reduce(lambda c, d: c + [Cell(d[1], d[0], 0)], [[]] + list(zip(b[0], b[1])))], cells)
 
-def simulated_cell_vertices(path):
+def simulated_cell_vertices(path, series=1):
+    series = '' if series == 1 else str(series)
     vertices = [[]]
 
-    vertices += sorted(glob.glob(path))
+    vertices += sorted(glob.glob(path + '/???vert' + series + '.pt'))
     vertices = reduce(lambda a, b: a + [tensor_to_list(torch.load(b, map_location=device))], vertices)
 
     return reduce(lambda a, b: a + [reduce(lambda c, d: c + [Cell.from_vertices(d)], [[]] + b)], [[]] + vertices)
 
+def simulated_cell_vertices_plus_reflectances(path, series=1):
+    scenes = simulated_cell_vertices(path, series)
+    series = '' if series == 1 else str(series)
+
+    reflectances = [[]]
+    reflectances += sorted(glob.glob(path + '/???refl' + series + '.pt'))
+    reflectances = reduce(lambda a, b: a + [tensor_to_list(torch.load(b, map_location=device))], reflectances)
+    for cells, refl in zip(scenes, reflectances):
+        for c, r in zip(cells, refl):
+            c.diffuse_reflectance = r
+    return scenes
 class RotatingSelectiveLoader:
 
     # batchsize will effectively be rounded up to the next number divisible by four
