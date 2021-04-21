@@ -3,40 +3,39 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 def string_to_array(string):
+    """turn a comma separated list of float values that are given in string form into a numpy array"""
     return np.array(tuple(float(entry) for entry in string[1:-1].split(',')))
 
 def heatmap(data, x_labels, y_labels, title='', cmap=None):
+    """generate heatmap plots"""
     fig, ax = plt.subplots(num=title)
     if cmap is not None:
-        im = ax.imshow(data, cmap=cmap)
+        _ = ax.imshow(data, cmap=cmap)
     else:
-        im = ax.imshow(data)
+        _ = ax.imshow(data)
 
-    # We want to show all ticks...
     ax.set_xlabel('initial layout')
     ax.set_ylabel('regularization weight')
     ax.set_xticks(np.arange(len(x_labels)))
     ax.set_yticks(np.arange(len(y_labels)))
-    # ... and label them with the respective list entries
     ax.set_xticklabels(x_labels)
     ax.set_yticklabels(y_labels)
 
-    # Rotate the tick labels and set their alignment.
     plt.setp(ax.get_xticklabels(), rotation=45, ha="right",
             rotation_mode="anchor")
 
-    # Loop over data dimensions and create text annotations.
     for i in range(len(y_labels)):
         for j in range(len(x_labels)):
-            text = ax.text(j, i, '{:.2f}'.format(data[i, j]),
+            _ = ax.text(j, i, '{:.2f}'.format(data[i, j]),
                         ha="center", va="center", color="w" if data[i, j] > np.min(data) + (np.max(data)-np.min(data))/2 else "k")
 
     fig.tight_layout()
-    plt.savefig(title+'.png')
+    plt.savefig('results/quantitative/'+title+'.png')
 
 data = np.empty((7, 6, 5, 4))
 stage2_data = np.empty((7, 6, 3))
 
+# generate a nicely formatted set of latex tables that contain results of all experiments and print it to the console
 for i, circles in enumerate(range(7, 14)):
     print(r'\subsection{' + str(circles) + 'x' + str(circles) + '}')
     print(r'\begin{adjustwidth}{-1cm}{}')
@@ -95,6 +94,7 @@ for i, circles in enumerate(range(7, 14)):
 layouts = ['13x13', '12x12', '11x11', '10x10', '9x9', '8x8', '7x7'][::-1]
 lambdas = [0, 0.5, 1, 5, 10, 50][::-1]
 
+# generate heatmaps for relevant metrics
 print(np.nanmax(data[:, :, 2, 0]))
 print(np.max(data[:, :, 4, 0]))
 heatmap(stage2_data[:, ::-1, 1].transpose(), layouts, lambdas, 'loss', cmap='Oranges')

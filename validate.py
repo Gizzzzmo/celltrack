@@ -1,22 +1,22 @@
-from setup import *
+from setup import alpha, device, xy
 import pyredner
 import torch
 import glob
 import imageio
-import mahotas
 import numpy as np
-import scipy as sp
 from PIL import Image
 from functools import reduce
 from sortedcontainers import SortedList
-from load import simulated_cell_vertices_plus_reflectances, simulated_ellipses
-from scene import create_scene, create_scene_environment, wiggled_gradients
+from load import simulated_cell_vertices_plus_reflectances
+from scene import create_scene, create_scene_environment
 import train
 import csv
+import viewsim
 import matplotlib.pyplot as plt
 
 
 def update_assigned_cell(cell, mask_to_cell_map, classifier_index):
+    """ update the simulated cell assigned to a reference segment """
     for jaccard, index in reversed(cell.jaccard[classifier_index]):
         if index not in mask_to_cell_map:
             mask_to_cell_map[index] = cell
@@ -32,36 +32,16 @@ def update_assigned_cell(cell, mask_to_cell_map, classifier_index):
                 cell.jaccard[classifier_index].pop()
 
 def evaluate(scenes, target_masks, originals, *classifiers):
-
-    kernel_size = 7
-    sigma = 4
-
-    # Create a x, y coordinate grid of shape (kernel_size, kernel_size, 2)
-    x_cord = torch.arange(kernel_size)
-    x_grid = x_cord.repeat(kernel_size).view(kernel_size, kernel_size)
-    y_grid = x_grid.t()
-    xy_grid = torch.stack([x_grid, y_grid], dim=-1)
-
-    mean = (kernel_size - 1)/2.
-    variance = sigma**2.
-
-    # Calculate the 2-dimensional gaussian kernel which is
-    # the product of two gaussian distributions for two different
-    # variables (in this case called x and y)
-    gaussian_kernel = (1./(2.*math.pi*variance)) *torch.exp(-torch.sum((xy_grid - mean)**2., dim=-1) /(2*variance))
-    # Make sure sum of values in gaussian kernel equals 1.
-    gaussian_kernel = gaussian_kernel / torch.sum(gaussian_kernel)
-
-    blur = torch.nn.Conv2d(1, 1, kernel_size, padding=kernel_size//2)
-    blur.weight = torch.nn.Parameter(gaussian_kernel.reshape(1, 1, kernel_size, kernel_size))
-    blur.bias[:] = 0
-    blur = blur.cuda()
+    """
+        evaluates a number of *classifiers*, on a list of *scenes* and the corresponding *original* images,
+        using a list of *target_masks*
+    """
 
     cam, shape_light, light = create_scene_environment(pyredner)
     area_lights = [light]
 
     classifiers = list(classifiers)
-    classifiers.append(lambda cell: True)
+    classifiers.append(lambda _: True)
 
     avg_jaccard = [0] * len(classifiers)
     num_identified_cells = [0] * len(classifiers)
@@ -73,13 +53,11 @@ def evaluate(scenes, target_masks, originals, *classifiers):
 
     for cells, target_mask, orig in zip(scenes, target_masks, originals):
         print('next')
-        mask_to_cell_map = [{} for i in avg_jaccard]
+        mask_to_cell_map = [{} for _ in avg_jaccard]
         caught_cells = [0] * len(classifiers)
+        pruned_lists = [[] for _ in classifiers]
         for cell in cells:
-            #vertices = cell.vertices.cpu().int().numpy()
-            #canvas = np.zeros((1024, 1024))
-            #mahotas.polygon.fill_polygon(vertices*4, canvas)
-            #canvas = canvas.transpose()
+            
             cell.orig = orig
             reflectance = cell.diffuse_reflectance
             cell.diffuse_reflectance = test_reflectance
@@ -94,16 +72,13 @@ def evaluate(scenes, target_masks, originals, *classifiers):
                 plt.imshow(resized_img)
                 plt.figure(2)
                 plt.imshow(np.abs(target_mask - (resized_img > 50) * 10))
-                #plt.figure(3)
-                #plt.imshow(canvas)
-                #plt.figure(4)
-                #plt.imshow(np.abs(target_mask - canvas * 10))
                 plt.show()
             cell.jaccard = [None] * len(classifiers)
 
             cell.pred = [None] * len(classifiers)
             for i, predict in enumerate(classifiers):
                 if predict(cell):
+                    pruned_lists[i].append(cell)
                     cell.jaccard[i] = SortedList(key=lambda t: t[0])
                     cell.pred[i] = target_mask[resized_img  > 50]
                     prediction_size = np.count_nonzero(resized_img > 50)
@@ -117,8 +92,11 @@ def evaluate(scenes, target_masks, originals, *classifiers):
 
                     update_assigned_cell(cell, mask_to_cell_map[i], i)
             del cell.img
-
+            
         if plotit:
+            viewsim.seg_mask1(pruned_lists[0], orig, 'pruned_mask_0.png')
+            viewsim.seg_mask1(pruned_lists[1], orig, 'pruned_mask_1.png')
+            viewsim.seg_mask1(pruned_lists[2], orig, 'pruned_mask_2.png')
             _, render = create_scene(pyredner, cam, shape_light, area_lights, cells)
             plt.figure(1)
             plt.imshow(render(4, 1).sum(dim=-1).cpu().detach())
@@ -136,7 +114,7 @@ def evaluate(scenes, target_masks, originals, *classifiers):
                         false_positives[i] += 1
                     else:
                         caught_cells[i] += 1
-                        jaccard, index = cell.jaccard[i][-1]
+                        jaccard, _ = cell.jaccard[i][-1]
                         print(jaccard)
                         avg_jaccard[i] += jaccard
         
@@ -160,15 +138,16 @@ def evaluate(scenes, target_masks, originals, *classifiers):
 
     return stats
 
-
 def predictor(classifier):
+    """ turns a diffuse reflectance based classifier into a decision function """
     return lambda cell: classifier.predict(cell.diffuse_reflectance[0].detach().cpu().numpy().reshape(1, 1))
 
 def thresholding(threshold):
+    """ turns a diffuse reflectance based threshold into a decision function """
     return lambda cell: cell.diffuse_reflectance[0].item() > threshold
 
-
 def crop_predictor(classifier, mean, std):
+    """ turns an image cutout based classier into cell based classifier, also makes sure that data is properly normalized """
     def predictor(cell):
         weight = (cell.img != 0).sum().float()
         print(weight)
@@ -186,7 +165,6 @@ def crop_predictor(classifier, mean, std):
         y_right = int(weighted_center[0] + feature_window_length/2)
 
         bbb = np.array(Image.fromarray(cell.orig[x_left:x_right, y_left:y_right]).resize((24, 24)))
-        bbb = bbb/np.sum(bbb)
         bbbb = torch.from_numpy(bbb).type(torch.FloatTensor).to(device)
         print('prediction:', classifier((bbbb - mean)/std))
         return classifier((bbbb - mean)/std)
@@ -195,6 +173,7 @@ def crop_predictor(classifier, mean, std):
 
 
 def find_threshold(refls, labels):
+    """ finds the threshold for a list of reflectances and their labels that produces the best accuracy """
     pairs = list(zip(refls, labels))
     pairs.sort(key=lambda pair: pair[0])
     num_of_correct = np.sum(labels)
@@ -210,6 +189,7 @@ def find_threshold(refls, labels):
     return best_threshold, best_correct
 
 def threshold_accuracy(threshold, refls, labels):
+    """computes the accuracy of a given threshold"""
     correct = 0
     for refl, label in zip(refls, labels):
         if (refl <= threshold and label == 0) or (refl > threshold and label == 1):
@@ -218,16 +198,27 @@ def threshold_accuracy(threshold, refls, labels):
     return correct/len(labels)
 
 def validate(circles, alpha_lambda):
+    """
+    Loads saved scenes that were the result of a *circles*x*circles* starting layout using a regularization weight of *alpha_lambda*
+    as well as the resulting cutouts from the original images.
+    Part of the data is used to train a neural network and find a threshold based on the simulated cell's diffuse reflectances.
+    The resulting classifiers (who judge whether a simulated cell actually covers a real one) are then evaluated on the rest of the data.
+    Metrics are printed to the console and saved in a csv file
+    """
     generated_cells_directory = '../data/stemcells/simulated/other_initilization_'+ str(circles) +'x'+ str(circles) +'circles_20/optimized_vertex_lists_1.0_0.01_' + str(alpha_lambda)
 
+    # load the target images from time series 1
     originals1 = [[]] + sorted(glob.glob('../data/stemcells/01/*.tif'))
     originals1 = reduce(lambda a, b: a + [imageio.imread(b)], originals1)
+    # get the four fully segmented ones
     originals1 = [originals1[20], originals1[30], originals1[32], originals1[38]]
 
+    # load the ground truth segmentation masks for these four images
     gts1 = [[]] + sorted(glob.glob('../data/stemcells/01_GT/SEG/man_seg???.tif'))
     gts1 = reduce(lambda a, b: a + [imageio.imread(b)], gts1)
     gts1 = [gts1[14], gts1[18], gts1[20], gts1[23]]
 
+    # repeat the above steps for time series 2
     originals2 = [[]] + sorted(glob.glob('../data/stemcells/02/*.tif'))
     originals2 = reduce(lambda a, b: a + [imageio.imread(b)], originals2)
     originals2 = [originals2[0], originals2[51], originals2[54], originals2[71]]
@@ -236,13 +227,14 @@ def validate(circles, alpha_lambda):
     gts2 = reduce(lambda a, b: a + [imageio.imread(b)], gts2)
     gts2 = [gts2[0], gts2[11], gts2[12], gts2[15]]
 
+    # load the corresponding scenes (coming from stage1) for all the images
     scenes2 = simulated_cell_vertices_plus_reflectances(generated_cells_directory, series=2)
     scenes2 = [scenes2[0], scenes2[51], scenes2[54], scenes2[71]]
 
     scenes1 = simulated_cell_vertices_plus_reflectances(generated_cells_directory, series=1)
     scenes1 = [scenes1[20], scenes1[30], scenes1[32], scenes1[38]]
 
-
+    # load the training data for the thresholding and the neural network (coming from stage2)
     refl = np.load(generated_cells_directory + '/refl.npy')
     refl2 = np.load(generated_cells_directory + '/refl2.npy')
     labels = np.load(generated_cells_directory + '/labels.npy')
@@ -250,12 +242,12 @@ def validate(circles, alpha_lambda):
     llabels = np.concatenate([labels, labels])
     cell_imgs = np.load(generated_cells_directory + '/cellimages.npy')
     train_len = len(cell_imgs)
-    cell_imgs2 = np.load(generated_cells_directory + '/cellimages2.npy')
-    cell_imgs = np.concatenate([cell_imgs, np.swapaxes(cell_imgs, 1, 2)[:, ::-1]])
+    cell_imgs = np.concatenate([cell_imgs, np.swapaxes(cell_imgs, 1, 2)[:, ::-1]]).astype(float)
     print(train_len, len(cell_imgs))
 
-    threshold, correct = find_threshold(refl, labels)
-    threshold2, correct2 = find_threshold(refl2, labels2)
+    # find the optimally separating threshold once for the data from the first and once for the data from the second time series
+    threshold, _ = find_threshold(refl, labels)
+    threshold2, _ = find_threshold(refl2, labels2)
     print(len(cell_imgs))
     print(len(labels), len(labels2))
     print(threshold)
@@ -267,9 +259,8 @@ def validate(circles, alpha_lambda):
     print(np.sum(labels2))
     print(np.sum(labels2)/len(labels2))
     print(np.sum(labels)/len(labels))
-    print(np.sum(np.isnan(cell_imgs)), np.max(cell_imgs))
     cell_imgs = (1-np.isnan(cell_imgs)) * cell_imgs
-    #print(labels[100:])
+    
     if plotit:
         plt.plot(np.extract(labels, refl), np.ones(int(np.sum(labels))), 'o')
         plt.plot(np.extract(labels == False, refl), np.zeros(int(len(labels) - np.sum(labels))), 'ro')
@@ -278,14 +269,18 @@ def validate(circles, alpha_lambda):
         plt.plot(np.extract(labels2 == False, refl2), np.zeros(int(len(labels2) - np.sum(labels2))), 'ro')
         plt.show()
 
-    # NN
+    # train the CNN on the cell cutouts from stage2
+    # first estimating mean and standard deviation
     mean = np.mean(cell_imgs)
     std = np.std(cell_imgs)
     print(mean, std)
+    # to then normalize
     cell_imgs -= mean
     cell_imgs /= std
+    # and finally train the network
     net = train.simple_nn(cell_imgs, llabels, train_len, early_stopping_patience=100)
 
+    # plot some of the cell cutouts and the nn predicted label
     if plotit:
         for i in range(-1, -10, -1):
             print(llabels[i])
@@ -293,7 +288,7 @@ def validate(circles, alpha_lambda):
             plt.imshow(cell_imgs[i])
             plt.show()
 
-
+    # define a function that takes in a cropped image and predicts, with the help of the network, the label
     def nn_classifier(crop):
         output = net(crop.reshape(1, 1, 24, 24))
         print(output)
@@ -301,6 +296,7 @@ def validate(circles, alpha_lambda):
         print(pred)
         return pred.item()
 
+    # evaluate the performance of the network and the threshold on the time series they were trained on
     stats1 = evaluate(
         scenes1,
         gts1,
@@ -309,6 +305,7 @@ def validate(circles, alpha_lambda):
         crop_predictor(nn_classifier, mean, std)
     )
 
+    # evaluate the performance of the network and the threshold on the time series they weren't trained on
     stats2 = evaluate(
         scenes2,
         gts2,
@@ -317,6 +314,7 @@ def validate(circles, alpha_lambda):
         crop_predictor(nn_classifier, mean, std)
     )
 
+    # save and display all results
     with open(generated_cells_directory + '/test_info2.csv', 'w') as info:
         wr = csv.writer(info, delimiter=';')
         wr.writerow([str(a) for a in stats1])
@@ -324,7 +322,9 @@ def validate(circles, alpha_lambda):
     print(stats1)
     print(stats2)
 
-plotit = False
-for circles in range(7, 14):
-    for alpha_lambda in [0, 0.5, 1, 5, 10, 50]:
+# toggle to show additional plots during the validation process
+plotit = True
+# validate combinations of starting layouts and regularization weights
+for circles in range(11, 12):
+    for alpha_lambda in [1]:
         validate(circles, alpha_lambda)

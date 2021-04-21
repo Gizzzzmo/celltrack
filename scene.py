@@ -1,14 +1,18 @@
 from setup import granularity, width, height, device
 import torch
 import math
-import numpy as np
 
 
 z = torch.zeros(granularity, device=device, dtype=torch.float32)
+# the cell indices array, that determines the triangulation of the cell polygons
 cell_indices = torch.tensor([[0, i+2, i+1] for i in range(granularity-2)], dtype = torch.int32,
                 device = device)
 
 def create_scene_environment(pyredner, distance_in_widths=20.0, light_intensity=100.0):
+    """
+        convenience function to quickly create a scene environment
+        consists of a camera capturing a 256x256 square in the xy plane and a light source evenly illuminating said square
+    """
     cam = pyredner.Camera(position=torch.tensor([width/2, height/2, -distance_in_widths * width]),
                             look_at=torch.tensor([width/2, height/2, 0.0]),
                             up=torch.tensor([0.0, -1.0, 0.0]),
@@ -36,6 +40,11 @@ def create_scene_environment(pyredner, distance_in_widths=20.0, light_intensity=
     return cam, shape_light, light
 
 def create_scene(pyredner, cam, shape_light, area_lights, cells):
+    """ 
+        given a camera, the light sources and their shapes, and a list of cells,
+        returns a function that renders the scene based on the vertex and reflectance data stored in the cells
+        as well as all the shape objects contained therein
+    """
     materials = []
     shapes = [shape_light]
     for i, c in enumerate(cells):
@@ -63,6 +72,11 @@ def create_scene(pyredner, cam, shape_light, area_lights, cells):
 
 
 def regularizer(cells):
+    """ 
+        shape regularization of a list of cells. 
+        Computes the sum of each visible cell's ratio of area to circumference squared, weighted with the cell's reflectance.
+        The more circular a cell, the higher this number is
+    """
     sum_of_regularization = torch.cuda.FloatTensor([0], device=device)
     for c in cells:
         if c.visible:
@@ -73,22 +87,3 @@ def regularizer(cells):
 
             sum_of_regularization += torch.log(c.diffuse_reflectance[0] + 2).data*area/(circumference**2)
     return sum_of_regularization
-
-def wiggled_gradients(cells, render, target):
-    for c in cells:
-        c.gradient_sum = 0
-    for offset in [-1, 1]:
-        for index in [0, 1]:
-            for c in cells:
-                c.vertices.data[:, index] += offset
-            img = render(4, 1).sum(dim=-1)
-            diff = (target - img)
-            loss = diff.pow(2).sum()
-
-            loss.backward(retain_graph=True)
-
-            for c in cells:
-                c.gradient_sum += c.vertices.grad.abs().sum()
-                c.vertices.data[:, index] -= offset
-    
-    return [c.gradient_sum.item() for c in cells]
