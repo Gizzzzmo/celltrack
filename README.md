@@ -17,9 +17,9 @@ The module *setup* defines various hyperparameters, that are used throughout dif
 The other modules contain helper functions, for dealing with cells, setting up a scene with pyredner, loading  and visualizing data, etc.
 
 Requirements are 
-    - pytorch
-    - numpy
-    - matplotlib
-    - sortedcontainers
-    - scikit-image
-    - pyredner and redner
+- pytorch
+- numpy
+- matplotlib
+- sortedcontainers
+- scikit-image
+- pyredner and redner
