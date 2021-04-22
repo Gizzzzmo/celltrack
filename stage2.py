@@ -47,11 +47,11 @@ def run_stage(circles, alpha_lambda):
         if plotit:
             _, render = create_scene(pyredner, cam, shape_light, area_lights, cells)
             img = render(4, 1).sum(dim=-1)
-            plt.figure(1)
+            plt.figure('rendered image')
             plt.imshow(img.cpu().detach())
-            plt.figure(2)
+            plt.figure('original')
             plt.imshow(orig)
-            plt.figure(3)
+            plt.figure('tracking ground truth')
             plt.imshow(gt)
             plt.show()
 
@@ -94,11 +94,11 @@ def run_stage(circles, alpha_lambda):
             reflectances.append(cell.diffuse_reflectance[0].item())
             cell_images.append(bbb)
             if plotit:
-                plt.figure(1)
+                plt.figure('rendering cutout')
                 plt.imshow(feauture_window)
-                plt.figure(2)
+                plt.figure('original target image cutout')
                 plt.imshow(bbb)
-                plt.figure(3)
+                plt.figure('tracking ground truth cutout')
                 plt.imshow(aaa)
                 plt.show()
 
@@ -138,7 +138,7 @@ def run_stage(circles, alpha_lambda):
     np.save(generated_cells_directory + '/labels.npy', y)
 
 # toggle to show additional plots during the process
-plotit = False
+plotit = True
 
 # run stage 2 for variations of starting layouts and regularization weights
 for circles in range(7, 14):

@@ -3,25 +3,32 @@ import numpy as np
 import os
 import imageio
 import glob
-import skimage
+import skimage.transform
 from cell import Cell, positions, pose_matrices, brightnesses, render_simulation
 from matplotlib import pyplot as plt, animation
 from setup import device, width, height, density_diagram
 
 print(device)
 
+# factor determines how large the initial cells are
 factor = 2.8
+# splitting_eccentricity determines how high an ellipse's eccentricity has to be for it to be split
 splitting_eccentricity = 0.71
+# learning rate for the cell positions
 pos_lr = 4
+# learning rate for the cell poses, i.e. their shapes and orientations
 pose_lr = 5e-5
+# learning rate for the cells' brightness parameters
 brightness_lr = 5e-2
 simulation_sequence = []
 loss_sequence = []
+# toggle to display and save an animation of the optimization process
 createanimation = False
-plotit = False
-preprocessed = False
+# toggle to display the current state of the optimization along the way
+plotit = True
 
 def createCells():
+    """ create an 8x8 initial layout of circular cells """
     cells = []
     for i in range(width//9, 8*width//9 + 1, width//9):
         for j in range(height//9, 8*height//9 + 1, width//9):
@@ -33,10 +40,12 @@ def createCells():
     return cells
 
 def loss_fn(cells, target, stage=1):
+    """ the loss function used """
     simulated = render_simulation(cells, stage)
     return (target-simulated), simulated
 
 def plot(diff, simulated):
+    """ plot two images (usually the current simulation and the current difference between the simulation and the target)"""
     plt.figure(1)
     plt.subplot(211)
     plt.imshow(diff.cpu().abs().detach().numpy())
@@ -46,11 +55,14 @@ def plot(diff, simulated):
     plt.show()
 
 def optimize(iterations, target, optimizer, stage=2):
+    """ perform *iterations* many optimization steps, with the given optimizer, and target image"""
     for i in range(iterations):
         optimizer.zero_grad()
+        # compute the loss
         diff, simulated = loss_fn(cells, target, stage)
         loss = diff.pow(2).sum()
-        if(createanimation):
+        # attach images to a list if an animation is to be created
+        if createanimation:
             detached = (simulated.detach().cpu().numpy(), diff.abs().detach().cpu().numpy())
             for c in cells:
                 x_pos = int(c.position.detach().cpu().numpy()[1])
@@ -63,33 +75,40 @@ def optimize(iterations, target, optimizer, stage=2):
         if(i%100 == 99) and plotit:
             print('plotting...')
             plot(diff, simulated)
+        # backprop loss and perform optimization step
         loss.backward(retain_graph=True)
         optimizer.step()
 
 def optimize_position(iterations, target, cells, stage=2):
+    """ minimize the loss w.r.t. the cells' positions """
     print('optimizing position')
     optimizer = torch.optim.Adam(positions(cells), lr=pos_lr)
     optimize(iterations, target, optimizer, stage)
 
 def optimize_brightness(iterations, target, cells, stage=2):
+    """ minimize the loss w.r.t. the cells' brightnesses """
     print('optimizing brightness')
     optimizer = torch.optim.Adam(brightnesses(cells), lr=brightness_lr)
     optimize(iterations, target, optimizer, stage)
 
 def optimize_pose(iterations, target, cells, stage=2):
+    """ minimize the loss w.r.t. the cells' pose_matrices """
     print('optimizing pose...')
     optimizer = torch.optim.Adam(positions(cells) + pose_matrices(cells), lr=pose_lr)
     optimize(iterations, target, optimizer, stage)
 
 def optimize_position_and_brightness(iterations, target, cells, stage=2):
+    """ minimize the loss w.r.t. the cells' positions and brightnesses simultaneaously """
     optimizer1 = torch.optim.Adam(positions(cells), lr=pos_lr)
     optimizer2 = torch.optim.Adam(brightnesses(cells), lr=brightness_lr)
     for i in range(iterations):
         optimizer1.zero_grad()
         optimizer2.zero_grad()
+        # compute the loss
         diff, simulated = loss_fn(cells, target, stage)
         loss = diff.pow(2).sum()
-        if(createanimation):
+        # attach images to a list if an animation is to be created
+        if createanimation:
             detached = (simulated.detach().cpu().numpy(), diff.abs().detach().cpu().numpy())
             for c in cells:
                 x_pos = int(c.position.detach().cpu().numpy()[1])
@@ -102,15 +121,19 @@ def optimize_position_and_brightness(iterations, target, cells, stage=2):
         if(i%100 == 99) and plotit:
             print('plotting...')
             plot(diff, simulated)
+        # backprop loss and perform optimization step
         loss.backward(retain_graph=True)
         optimizer1.step()
         optimizer2.step()
 
 def split(threshold):
+    """ split cells into two if their eccentricity surpasses the *threshold* """
     print('splitting...')
     for cell in cells:
+        # compute eccentricity via singular value decomposition of the pose matrix
         u, s, v = torch.svd(cell.pose_matrix)
         ecc = 1-(s[1]/s[0])**2
+        # if the threshold is surpassed delete this cell, and create two new ones along the princial axis of the original one
         if(ecc > threshold**2 and cell.visible):
             cell.delete()
             M1 = factor*torch.FloatTensor([[1/16, 0], [0, 1/16]]).to(device)
@@ -128,6 +151,10 @@ def split(threshold):
             cells.append(Cell(M2, pos2, cell.brightness[0]))
 
 def delete_superfluous(threshold, target):
+    """ 
+        delete superfluous cells by checking if the loss produced by them is at least *threshold* times greater than the norm of the image,
+        or if they simply don't contribute enough to the simulation
+    """
     print('deleting...')
     for cell in cells:
         if cell.visible:
@@ -139,6 +166,7 @@ def delete_superfluous(threshold, target):
                 cell.delete()
 
 def wiggled_gradients(target, stage=2):
+    """ compute how much the gradients change when one slightly changes any cell's position """
     gradients = []
     for cell in cells:
         if cell.visible:
@@ -169,31 +197,40 @@ def wiggled_gradients(target, stage=2):
     return gradients
 
 i = 0
-target_dir = '../data/stemcells/closed01/*.png' if preprocessed else '../data/stemcells/01/*.tif'
+target_dir = '../data/stemcells/01/*.tif'
 print("go")
+
+# perform the optimization for every image in the target directory
 for path in sorted(glob.glob(target_dir)):
     print(path)
     if(i < 1):
         i += 1
         continue
+    # load the image
     raw_image = imageio.imread(path)
     
+    # downscale the image and transform it into a pytorch tensor
     target = 255*torch.from_numpy(skimage.transform.rescale(raw_image,
         (width/raw_image.shape[0], height/raw_image.shape[1]))).float().to(device)
+    # create intial cells
     cells = createCells()
     
-    wiggled = wiggled_gradients(target)
-    x, y = density_diagram(wiggled)
-    plt.plot(x, y)
-    plt.plot(np.array(wiggled), np.zeros((len(wiggled))), 'ro')
-    plt.show()
+    if plotit:
+        wiggled = wiggled_gradients(target)
+        x, y = density_diagram(wiggled)
+        plt.plot(x, y)
+        plt.plot(np.array(wiggled), np.zeros((len(wiggled))), 'ro')
+        plt.show()
 
+    # taking turns, optimize the brightness, the positions and the pose_matrices of all the cells
     optimize_brightness(50, target, cells)
     optimize_position_and_brightness(300, target, cells, stage=1)
     optimize_pose(200, target, cells)
     optimize_brightness(100, target, cells)
+    # delete superfluous cells
     delete_superfluous(1.05, target)
     if(positions(cells)):
+        # continue to do the same as before, while also splitting cells after adjusting their pose matrices
         split(splitting_eccentricity)
         optimize_position(100, target, cells)
         optimize_pose(200, target, cells)
@@ -206,20 +243,22 @@ for path in sorted(glob.glob(target_dir)):
         optimize_position(100, target, cells)
         optimize_pose(500, target, cells)
         
-        wiggled = wiggled_gradients(target)
-        x, y = density_diagram(wiggled)
-        plt.plot(x, y)
-        plt.plot(np.array(wiggled), np.zeros((len(wiggled))), 'ro')
-        plt.show()
+        if plotit:
+            wiggled = wiggled_gradients(target)
+            x, y = density_diagram(wiggled)
+            plt.plot(x, y)
+            plt.plot(np.array(wiggled), np.zeros((len(wiggled))), 'ro')
+            plt.show()
 
         if createanimation:
             optimize_pose(100, target, cells)
 
-        diff, simulated = loss_fn(cells, target, stage=2)
-        if(plotit):
+        if plotit:
+            diff, simulated = loss_fn(cells, target, stage=2)
             plot(diff, simulated)
 
-        save_dir = '../data/stemcells/simulated/'+ ('preprocessed_' if preprocessed else 'real_') \
+        # determine where to save the animation, as well as the array of cell positions and pose_matrices
+        save_dir = '../data/stemcells/simulated/real_' \
             +str(width)+'x'+str(height)+'_'+str(splitting_eccentricity)+'_'+str(pos_lr)+'_'+str(pose_lr)+'_'+str(brightness_lr)+'/'
         if not os.path.exists(save_dir):
             os.makedirs(save_dir)
@@ -247,12 +286,14 @@ for path in sorted(glob.glob(target_dir)):
             anim.save(save_dir + 'simulated_blobs_loss_' + str(i) +'.mp4', fps=30, extra_args=['-vcodec', 'libx264'])
             plt.show()
 
+        # save the positions and pose_matrices
         pos_array = torch.stack(positions(cells))
         pose_array = torch.stack(pose_matrices(cells))
         torch.save(pos_array, save_dir+f'{i:03}'+'pos.pt')
         torch.save(pose_array, save_dir+f'{i:03}'+'pose.pt')
 
-        if(createanimation):
+        # reset the lists for the animation and delete arrays, so as not to run out of memory on the graphics card
+        if createanimation:
             simulation_sequence = []
             loss_sequence = []
         del pose_array
@@ -260,5 +301,6 @@ for path in sorted(glob.glob(target_dir)):
 
     del cells
     del target
+    # force cuda to free unused memory on the graphics card
     torch.cuda.empty_cache()
     i += 1

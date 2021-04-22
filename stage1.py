@@ -222,8 +222,8 @@ simulated_path = None#'256x256_0.71_4_5e-05'
 # learning rates controlling how much the reflectances and the vertex positions are adjusted each iteration step
 reflectance_learn_rate = 1e-2
 vertex_learn_rate = 1e-0
-# if plotit is True the renderings will be plotted every few generations
-plotit = False
+# if plotit is True the renderings will be plotted every few iterations
+plotit = True
 # if saveanimation is True the development of the cells during optimization will be animated in the form of
 #   a) the renderings over time
 #   b) the vertex lists over time

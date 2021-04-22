@@ -103,7 +103,7 @@ def redner_reflectances(cells):
     return [cell.diffuse_reflectance for cell in cells if cell.visible]
 
 def render_simulation(cells, stage=1, simulated=None):
-    """ renders a scene constisting of a list of *cells* onto the *simulated* arrray. If no array is provided, it creates a new one"""
+    """ renders a scene constisting of a list of *cells* onto the *simulated* arrray. If no array is provided, it creates a new one """
     if simulated is None:
         simulated = torch.zeros((width, height), device=device)
     for cell in cells:
@@ -113,7 +113,7 @@ def render_simulation(cells, stage=1, simulated=None):
     return simulated
 
 def render_vertex_list(cells, value=255, simulated=None):
-    """ renders the vertex lists of all the *cells* onto the *simulated* array. Vertices are drawn with the *value* (grayscale) color value""""
+    """ renders the vertex lists of all the *cells* onto the *simulated* array. Vertices are drawn with the *value* (grayscale) color value """
     if simulated is None:
         simulated = torch.zeros((width, height), device=device)
     else:
